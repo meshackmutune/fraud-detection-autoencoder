@@ -414,6 +414,22 @@ def customer_portal():
     if st.session_state.model_loaded:
         st.subheader("Simulate a Transaction")
         
+        # Add threshold adjustment option
+        with st.expander("⚙️ Advanced Settings"):
+            st.write("**Fraud Detection Sensitivity**")
+            use_custom_threshold = st.checkbox("Override default threshold", value=False)
+            if use_custom_threshold:
+                custom_threshold = st.slider(
+                    "Custom Threshold (higher = less sensitive)", 
+                    min_value=0.0, 
+                    max_value=1.0, 
+                    value=float(st.session_state.threshold) if st.session_state.threshold else 0.1,
+                    step=0.01,
+                    help="Increase to reduce false positives, decrease to catch more fraud"
+                )
+                st.session_state.threshold = custom_threshold
+                st.info(f"Using custom threshold: {custom_threshold:.4f}")
+        
         with st.form("transaction_form"):
             # Replace slider with text input for amount (V1 feature)
             transaction_amount = st.text_input(
@@ -439,14 +455,24 @@ def customer_portal():
                 st.error("Please enter a valid number for the Transaction Amount.")
                 return
             
-            # Generate mock features (V1-V28) and Time. Time is always the first feature.
-            # V-features are typically normalized/PCA'd, so they are close to 0.
-            mock_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2)  # 28 V-features
-            time_feature = np.array([45000])  # Mock Time feature
+            # IMPORTANT: Generate realistic mock features
+            # The V-features in the Credit Card dataset are PCA-transformed and typically range between -3 and 3
+            # We'll generate more realistic values
+            np.random.seed()  # Ensure randomness
+            
+            # Generate mock V-features (V1-V28) with realistic ranges
+            # Most legitimate transactions have V-features close to 0
+            mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)  # Reduced scale for more realistic data
+            
+            # Time feature: Random time within a day (0-86400 seconds)
+            time_feature = np.array([np.random.uniform(0, 86400)])
+            
+            # Amount feature
             amount_feature = np.array([amount_value])
             
-            # The final feature vector structure MUST match the training data (30 features: Time, V1-V28, Amount)
-            raw_transaction_data = np.concatenate([time_feature, mock_features, amount_feature])
+            # CRITICAL: The raw transaction data should be UNSCALED
+            # The scaler will be applied inside predict_transaction()
+            raw_transaction_data = np.concatenate([time_feature, mock_v_features, amount_feature])
             
             # Run Prediction
             with st.spinner("Analyzing transaction for anomalies..."):
@@ -458,6 +484,7 @@ def customer_portal():
                     error_score, is_anomaly = predict_transaction(model, scaler, threshold, raw_transaction_data)
                 except Exception as e:
                     st.error(f"Error during prediction: {e}")
+                    st.exception(e)
                     return
                 
             # Display Result
