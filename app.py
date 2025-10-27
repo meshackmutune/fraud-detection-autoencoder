@@ -445,7 +445,7 @@ def customer_portal():
         # Add pre-defined test scenarios
         st.markdown("---")
         st.write("**Quick Test Scenarios** (Optional)")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         test_scenario = None
         with col1:
@@ -457,6 +457,9 @@ def customer_portal():
         with col3:
             if st.button("🚨 Large Purchase ($2500)"):
                 test_scenario = "large"
+        with col4:
+            if st.button("🧪 Zero Features Test"):
+                test_scenario = "zero"
         
         st.markdown("---")
         
@@ -495,28 +498,33 @@ def customer_portal():
             # Strategy: Use smaller variance for lower amounts (more typical), higher for large amounts
             np.random.seed()
             
-            if test_scenario == "small":
+            if test_scenario == "zero":
+                # Perfect "average" transaction - all V features are 0
+                mock_v_features = np.zeros(INPUT_DIM - 2)
+                time_feature = np.array([0.0])  # Time = 0
+                st.info("🧪 Testing with ALL ZERO features (should be most 'normal')")
+            elif test_scenario == "small":
                 # Small purchase - very typical pattern
-                mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
+                mock_v_features = np.random.normal(loc=0.0, scale=0.2, size=INPUT_DIM - 2)
                 time_feature = np.array([43200])  # Midday
             elif test_scenario == "medium":
                 # Medium purchase - normal pattern
-                mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)
+                mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
                 time_feature = np.array([54000])  # Afternoon
             elif test_scenario == "large":
                 # Large purchase - suspicious pattern (higher variance)
-                mock_v_features = np.random.normal(loc=0.0, scale=1.2, size=INPUT_DIM - 2)
-                mock_v_features[0] = 2.5  # Abnormal V1 value
-                mock_v_features[2] = -2.8  # Abnormal V3 value
+                mock_v_features = np.random.normal(loc=0.0, scale=2.0, size=INPUT_DIM - 2)
+                mock_v_features[0] = 3.5  # Very abnormal V1 value
+                mock_v_features[2] = -3.2  # Very abnormal V3 value
                 time_feature = np.array([3600])  # Late night (suspicious)
             else:
-                # Manual entry - use moderate variance
+                # Manual entry - use very conservative variance
                 if amount_value < 100:
-                    mock_v_features = np.random.normal(loc=0.0, scale=0.4, size=INPUT_DIM - 2)
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.15, size=INPUT_DIM - 2)
                 elif amount_value < 500:
-                    mock_v_features = np.random.normal(loc=0.0, scale=0.6, size=INPUT_DIM - 2)
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.25, size=INPUT_DIM - 2)
                 else:
-                    mock_v_features = np.random.normal(loc=0.0, scale=0.9, size=INPUT_DIM - 2)
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)
                 time_feature = np.array([np.random.uniform(0, 86400)])
             
             # Amount feature
@@ -558,12 +566,38 @@ def customer_portal():
                 st.caption(f"The reconstruction error ({error_score:.4f}) is below the threshold ({threshold:.4f}) by {abs(difference):.4f}")
             
             # Debug information (expandable)
-            with st.expander("🔍 Debug Information"):
-                st.write("**Transaction Features (first 5):**")
-                st.code(raw_transaction_data[:5])
-                st.write("**Model Threshold:**", threshold)
-                st.write("**Calculated Error:**", error_score)
-                st.write("**Is Anomaly:**", is_anomaly)
+            with st.expander("🔍 Debug Information", expanded=True):
+                st.write("**Model Configuration:**")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                with col_d1:
+                    st.metric("Current Threshold", f"{threshold:.4f}")
+                with col_d2:
+                    st.metric("Error Score", f"{error_score:.4f}")
+                with col_d3:
+                    st.metric("Ratio (Error/Threshold)", f"{(error_score/threshold):.2f}x")
+                
+                st.write("**Transaction Features (first 10):**")
+                st.code(raw_transaction_data[:10])
+                
+                st.write("**Feature Statistics:**")
+                st.write(f"- Mean: {np.mean(raw_transaction_data):.4f}")
+                st.write(f"- Std Dev: {np.std(raw_transaction_data):.4f}")
+                st.write(f"- Min: {np.min(raw_transaction_data):.4f}")
+                st.write(f"- Max: {np.max(raw_transaction_data):.4f}")
+                
+                st.write("**Scaled Features (after scaler, first 10):**")
+                scaled = scaler.transform(raw_transaction_data.reshape(1, -1))
+                st.code(scaled[0][:10])
+                
+                st.write("**Analysis:**")
+                if error_score > 0.5:
+                    st.error("❌ ERROR SCORE IS EXTREMELY HIGH - Features are completely unrecognizable to the model")
+                elif error_score > 0.2:
+                    st.warning("⚠️ ERROR SCORE IS HIGH - Features don't match typical patterns")
+                elif error_score > threshold:
+                    st.info("ℹ️ Error exceeds threshold by a small margin")
+                else:
+                    st.success("✅ Error is within acceptable range")
 
             # Save to Database
             prediction_result = {
