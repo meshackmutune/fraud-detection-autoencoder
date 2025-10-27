@@ -1,333 +1,327 @@
 import streamlit as st
 import numpy as np
 import firebase_admin
-import os
-import json
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
+import os
+import json 
 
-# --- 0. CONFIGURATION AND STYLING (Green Theme) ---
-st.set_page_config(
-    page_title="Secure Bank PoC",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# --- CONFIGURATION ---
+ADMIN_EMAIL = "admin@securebank.com"
+DB_TIMEOUT_SECONDS = 5
+THEME_COLOR = "#10B981" # Green color for the interface
 
-# Custom CSS for the Green Theme
-st.markdown("""
-<style>
-/* Main green color palette */
-:root {
-    --primary-green: #10B981; /* Tailwind Emerald 500 */
-    --light-green: #D1FAE5; /* Tailwind Emerald 100 */
-    --dark-green: #047857;  /* Tailwind Emerald 700 */
-}
+# --- FIREBASE INITIALIZATION ---
 
-/* Primary color for buttons and accents */
-.stButton>button, .stRadio label {
-    background-color: var(--primary-green) !important;
-    color: white !important;
-    border-color: var(--dark-green) !important;
-}
-.stButton>button:hover {
-    background-color: var(--dark-green) !important;
-    border-color: var(--primary-green) !important;
-}
-
-/* Success messages green */
-.stSuccess {
-    background-color: var(--light-green) !important;
-    color: var(--dark-green) !important;
-    border-left: 6px solid var(--primary-green) !important;
-}
-
-/* Warning/Error messages (using default for contrast) */
-.stError {
-    border-left: 6px solid #EF4444 !important;
-}
-
-/* Adjust Streamlit primary color */
-.stApp {
-    --primary-color: var(--primary-green);
-    --secondary-background-color: #F9FAFB; 
-    color: #1F2937;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-# --- 1. FIREBASE INITIALIZATION & AUTHENTICATION ---
-
+@st.cache_resource
 def initialize_firebase():
-    """Initializes Firebase Admin SDK using canvas environment variables."""
+    """Initializes the Firebase Admin SDK using st.secrets."""
     if not firebase_admin._apps:
         try:
-            # 1. Get configuration from environment
-            app_id = os.environ.get('__app_id', 'default-app-id')
-            firebase_config = json.loads(os.environ.get('__firebase_config', '{}'))
-            initial_auth_token = os.environ.get('__initial_auth_token')
+            # 1. Load credentials securely from st.secrets (which reads .streamlit/secrets.toml)
+            # This fixes the Firebase Initialization Error by using the credentials 
+            # pasted into the Streamlit Cloud Secrets panel.
+            service_account_info = dict(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
             
-            # 2. Initialize Firebase
-            cred = credentials.Certificate(firebase_config)
-            firebase_admin.initialize_app(cred, name=app_id)
+            # 2. Convert to Firebase Credentials object
+            cred = credentials.Certificate(service_account_info)
             
-            # 3. Sign in using the custom token
-            if initial_auth_token:
-                user = auth.verify_id_token(initial_auth_token)
-                st.session_state.user = user
-                st.session_state.user_id = user['uid']
+            # 3. Initialize the app
+            firebase_admin.initialize_app(cred)
             
-            # 4. Initialize Firestore DB instance
-            st.session_state.db = firestore.client()
+            st.success("Firebase initialized successfully.")
             
-            st.session_state.auth_ready = True
+            # Return Firestore and Auth instances
+            db = firestore.client()
+            return db, auth
+            
         except Exception as e:
-            st.error(f"Firebase Initialization Error: {e}")
-            st.session_state.auth_ready = False
-            
+            st.error(f"Firebase Initialization Error: Check Streamlit Cloud Secrets for correct credentials. Error: {e}")
+            return None, None
+    else:
+        # App is already initialized
+        db = firestore.client()
+        return db, auth
 
-# --- 2. AUTHENTICATION WIDGETS ---
+# --- APPLICATION STATE MANAGEMENT ---
 
-def get_db():
-    if 'db' not in st.session_state or st.session_state.db is None:
-        return firestore.client()
-    return st.session_state.db
+def init_session_state(db, fb_auth):
+    """Initializes all necessary session state variables."""
+    if 'db' not in st.session_state:
+        st.session_state.db = db
+        st.session_state.fb_auth = fb_auth
+        st.session_state.user = None
+        st.session_state.is_admin = False
+        st.session_state.app_id = 'default-app-id' # Since we use st.secrets, we default this.
+        st.session_state.model_loaded = False
+        st.session_state.model = None
+        st.session_state.scaler = None
+        st.session_state.threshold = None
 
-def login_user(email, password):
-    """Attempts to simulate user login."""
+def load_assets_and_set_state():
+    """Loads model assets and updates session state."""
+    if not st.session_state.model_loaded:
+        model, scaler, threshold = load_model_and_assets()
+        if model and scaler and threshold:
+            st.session_state.model = model
+            st.session_state.scaler = scaler
+            st.session_state.threshold = threshold
+            st.session_state.model_loaded = True
+            st.success("AI Model and assets loaded.")
+        else:
+            st.error("Could not load all necessary AI assets. Check logs.")
+
+# --- FIREBASE HELPER FUNCTIONS ---
+
+def get_user_data_path(user_id):
+    """Generates the Firestore collection path for a user's private data."""
+    app_id = st.session_state.app_id
+    # Path: artifacts/{appId}/users/{userId}/transactions
+    return st.session_state.db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('transactions')
+
+def write_transaction_to_db(user_id, transaction_data, prediction_result):
+    """Writes the transaction and prediction result to Firestore."""
+    
+    transaction_ref = get_user_data_path(user_id)
+    
+    data = {
+        'timestamp': firestore.SERVER_TIMESTAMP,
+        'user_id': user_id,
+        'amount': float(transaction_data[-1]), # Last feature is 'Amount'
+        'features': [float(x) for x in transaction_data], # Store raw features
+        'prediction': {
+            'is_fraud': prediction_result['is_fraud'],
+            'error_score': prediction_result['error_score'],
+            'threshold': prediction_result['threshold']
+        }
+    }
+    
     try:
-        # In a real app, this would use sign_in_with_email_and_password
-        # Since we use the Admin SDK, we simulate user existence check
-        user = auth.get_user_by_email(email)
-        # Assuming password verification is handled by Firebase on a client SDK
-        st.session_state.user = user
-        st.session_state.user_id = user.uid
-        st.session_state.is_admin = (email == "admin@securebank.com")
-        st.session_state.logged_in = True
-        st.success(f"Welcome back, {user.email}!")
+        transaction_ref.add(data, timeout=DB_TIMEOUT_SECONDS)
     except Exception as e:
-        st.error("Login failed. Check email and password.")
+        st.error(f"Database Write Error: Could not save transaction history. {e}")
 
-def register_user(email, password):
-    """Creates a new user account."""
-    if not email or not password:
-        st.warning("Email and Password cannot be empty.")
+
+# --- AUTHENTICATION UI COMPONENTS ---
+
+def login_form():
+    """Renders the login form."""
+    with st.form("Login"):
+        st.markdown(f"<h2 style='color: {THEME_COLOR};'>Login to SecureBank PoC</h2>", unsafe_allow_html=True)
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login", type="primary")
+
+        if submitted:
+            try:
+                user = st.session_state.fb_auth.get_user_by_email(email)
+                # Simple password check (Note: For true production, Firebase SDK handles this via signInWithEmailAndPassword, 
+                # but Admin SDK requires a custom token or complex verification outside this scope. 
+                # We use Admin SDK here only for creating/getting users, assuming a simplified token flow later).
+                # For this demonstration, we rely on Firebase's user record existence as 'login success'.
+                
+                # In a real app, you'd use the client SDK:
+                # user_credentials = st.session_state.fb_auth.sign_in_with_email_and_password(email, password)
+                
+                # For simplicity with Admin SDK in this environment:
+                if user and password: # Check if user exists and a password was entered
+                    st.session_state.user = user
+                    st.session_state.is_admin = (email == ADMIN_EMAIL)
+                    st.experimental_rerun()
+                else:
+                    st.error("Invalid credentials.")
+            except Exception as e:
+                st.error(f"Login failed. Check email and password. Error: {e}")
+
+def register_form():
+    """Renders the registration form."""
+    with st.form("Register"):
+        st.markdown(f"<h2 style='color: {THEME_COLOR};'>New User Registration</h2>", unsafe_allow_html=True)
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Register", type="primary")
+
+        if submitted:
+            try:
+                user = st.session_state.fb_auth.create_user(
+                    email=email,
+                    password=password
+                )
+                st.success(f"Account created successfully for {user.email}! Please log in.")
+                st.info("Note: The password is visible to Streamlit's backend in this demo. Use a dummy password.")
+            except Exception as e:
+                st.error(f"Registration failed: {e}")
+
+def logout_button():
+    """Renders the logout button."""
+    if st.session_state.user:
+        if st.sidebar.button("Logout"):
+            st.session_state.user = None
+            st.session_state.is_admin = False
+            st.experimental_rerun()
+
+# --- MAIN APP UI SCREENS ---
+
+def admin_dashboard():
+    """UI for the Admin user."""
+    st.markdown(f"<h1 style='color: {THEME_COLOR};'>Admin Dashboard</h1>", unsafe_allow_html=True)
+    st.write(f"Welcome, Admin: {st.session_state.user.email}")
+    st.info("Here you would see aggregated fraud metrics, user activity logs, and system health checks.")
+    
+    # Placeholder for viewing all transactions
+    st.subheader("Recent System Transactions (Demo)")
+    try:
+        # Path: artifacts/{appId}/public/data/transactions (or iterate over users)
+        # For simplicity, we'll just show a mock message.
+        st.warning("Fetching all transactions is resource-intensive. Using a placeholder for demonstration.")
+        st.dataframe({
+            'User': ['user123', 'admin@sec...'],
+            'Amount': [45.99, 1000.00],
+            'Prediction': ['Non-Fraud', 'Fraud'],
+            'Score': [0.001, 0.089]
+        })
+    except Exception as e:
+        st.error(f"Error fetching admin data: {e}")
+
+
+def customer_portal():
+    """UI for a standard Customer user."""
+    st.markdown(f"<h1 style='color: {THEME_COLOR};'>Customer Transaction Checker</h1>", unsafe_allow_html=True)
+    st.write(f"Welcome, {st.session_state.user.email}")
+    
+    # 1. Load Assets
+    load_assets_and_set_state()
+    
+    if st.session_state.model_loaded:
+        st.subheader("Simulate a Transaction")
+        
+        with st.form("transaction_form"):
+            # Replace slider with text input for amount (V1 feature)
+            transaction_amount = st.text_input(
+                "Transaction Amount ($)", 
+                value="50.00", 
+                help="Input the dollar amount of the transaction."
+            )
+            
+            # Use placeholder inputs for the 29 V-features (V1 to V28) + Time
+            # For a real system, these would come from the transaction system, not user input.
+            st.markdown("---")
+            st.info("The remaining 29 features (Time, V1-V28) are auto-populated for this demo.")
+            
+            # Generate mock features (V1-V28) and Time. Time is always the first feature.
+            # V-features are typically normalized/PCA'd, so they are close to 0.
+            mock_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2) # 28 V-features
+            time_feature = np.array([45000]) # Mock Time feature
+            
+            # The final feature vector structure MUST match the training data (30 features: Time, V1-V28, Amount)
+            try:
+                amount_feature = np.array([float(transaction_amount)])
+                raw_transaction_data = np.concatenate([time_feature, mock_features, amount_feature])
+                
+            except ValueError:
+                st.error("Please enter a valid number for the Transaction Amount.")
+                return
+
+            submitted = st.form_submit_button("Check for Fraud", type="primary")
+
+        if submitted:
+            # Run Prediction
+            with st.spinner("Analyzing transaction for anomalies..."):
+                model = st.session_state.model
+                scaler = st.session_state.scaler
+                threshold = st.session_state.threshold
+                
+                error_score, is_anomaly = predict_transaction(model, scaler, threshold, raw_transaction_data)
+                
+            # Display Result
+            if is_anomaly:
+                st.error(f"FRAUD ALERT! ANOMALY DETECTED.")
+                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="inverse")
+                st.markdown("⚠️ **This transaction is flagged as suspicious and requires manual review.**")
+            else:
+                st.success("Transaction is LIKELY LEGITIMATE.")
+                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="normal")
+                st.markdown("✅ **Transaction cleared based on reconstruction error.**")
+
+            # Save to Database
+            prediction_result = {
+                'is_fraud': bool(is_anomaly), 
+                'error_score': float(error_score),
+                'threshold': float(threshold)
+            }
+            write_transaction_to_db(st.session_state.user.uid, raw_transaction_data, prediction_result)
+            st.sidebar.success("Transaction saved to your history.")
+            
+        st.subheader("Your Transaction History (Demo)")
+        st.write("This section would typically pull data from the user's private Firestore collection.")
+        # Mock history data
+        st.dataframe({
+            'Time': ['2025-01-01', '2025-01-02'],
+            'Amount': [25.50, 890.00],
+            'Status': ['Cleared', 'Suspicious']
+        })
+
+
+def authentication_ui():
+    """Handles the display of login/register forms."""
+    st.sidebar.markdown(f"<h3 style='color: {THEME_COLOR};'>Account</h3>", unsafe_allow_html=True)
+    
+    # Simple navigation toggle
+    auth_mode = st.sidebar.radio("Mode", ["Login", "Register"])
+    
+    if auth_mode == "Login":
+        login_form()
+    elif auth_mode == "Register":
+        register_form()
+
+# --- MAIN APPLICATION LOGIC ---
+
+def main():
+    """Main application entry point."""
+    st.set_page_config(
+        page_title="SecureBank PoC",
+        layout="centered",
+        initial_sidebar_state="collapsed"
+    )
+
+    # Apply Green Theme (using st.markdown and direct style tags)
+    st.markdown(f"""
+    <style>
+    .stButton>button {{
+        background-color: {THEME_COLOR};
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    }}
+    .stButton>button:hover {{
+        background-color: #059669; /* Darker green on hover */
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    # 1. Initialize Firebase and Get Instances
+    db, fb_auth = initialize_firebase()
+    
+    if not db:
+        st.warning("Application halted. Check Streamlit logs for Firebase initialization error.")
         return
         
-    try:
-        # Create user with Firebase Admin SDK
-        user = auth.create_user(email=email, password=password)
-        st.session_state.user = user
-        st.session_state.user_id = user.uid
-        st.session_state.is_admin = False
-        st.session_state.logged_in = True
-        
-        # Initialize user data in Firestore
-        db = get_db()
-        doc_ref = db.collection('artifacts').document(st.session_state.app_id).collection('users').document(user.uid).collection('profile').document('data')
-        doc_ref.set({'email': email, 'is_admin': False})
-        
-        st.success(f"Registration successful! Welcome, {user.email}.")
-    except Exception as e:
-        st.error(f"Registration failed: {e}")
-
-def logout_user():
-    """Logs the user out."""
-    for key in ['logged_in', 'user', 'user_id', 'is_admin']:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.session_state.auth_status = "login"
-    st.success("Logged out successfully.")
-
-def UserAuthentication():
-    """Displays the Login/Register/Logout UI."""
-    if st.session_state.logged_in:
-        st.sidebar.success(f"Signed in as: {st.session_state.user.email}")
-        if st.sidebar.button("Logout", key="logout_btn", use_container_width=True):
-            logout_user()
-        return True
-
-    # Login/Register View
-    if 'auth_status' not in st.session_state:
-        st.session_state.auth_status = "login"
-
-    st.sidebar.title("Secure Sign-In")
-    st.sidebar.subheader("Fraud Detection PoC")
+    # 2. Initialize Session State
+    init_session_state(db, fb_auth)
     
-    auth_container = st.sidebar.container(border=True)
-
-    with auth_container:
-        email = st.text_input("Email", key="auth_email")
-        password = st.text_input("Password", type="password", key="auth_password")
-
-        col_l, col_r = st.columns(2)
-        
-        with col_l:
-            if st.button("Login", key="login_btn", use_container_width=True):
-                login_user(email, password)
-                st.rerun()
-
-        with col_r:
-            if st.button("Register", key="register_btn", use_container_width=True):
-                register_user(email, password)
-                st.rerun()
-
-    return False
-
-
-# --- 3. MAIN APPLICATION FLOW ---
-
-# Initialize state variables
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.is_admin = False
-    st.session_state.app_id = os.environ.get('__app_id', 'default-app-id')
-
-# Initialize Firebase services
-initialize_firebase()
-if not st.session_state.auth_ready:
-    st.stop()
-
-
-# Load model assets once
-MODEL, SCALER, THRESHOLD = load_model_and_assets()
-
-if MODEL is None or SCALER is None or THRESHOLD is None:
-    st.stop() # Stop execution if assets failed to load
-
-# Authentication check
-is_authenticated = UserAuthentication()
-
-if not is_authenticated:
-    st.info("Please login or register to access the Fraud Detection Interface.")
-else:
-    # Role-based content selection
+    # 3. Main Content Rendering
+    st.sidebar.title("SecureBank PoC")
+    logout_button() 
     
-    st.sidebar.markdown("---")
-    if st.session_state.is_admin:
-        page = st.sidebar.radio(
-            "Select Interface", 
-            ["Administrator Dashboard", "Customer Interface"],
-            icons=['gear', 'person'],
-            index=0 
-        )
+    if st.session_state.user:
+        if st.session_state.is_admin:
+            admin_dashboard()
+        else:
+            customer_portal()
     else:
-        page = st.sidebar.radio(
-            "Select Interface", 
-            ["Customer Interface"],
-            icons=['person'],
-            index=0 
-        )
-    st.sidebar.markdown("---")
+        authentication_ui()
 
-    # --- CUSTOMER INTERFACE ---
-    if page == "Customer Interface":
-        
-        st.title("Welcome to Your Secure Banking Portal 🏦")
-        st.subheader("Transaction Verification Simulation")
-        st.markdown(f"**Current User:** `{st.session_state.user_id}`")
-        st.success("Your identity is verified. Proceed with your transaction.")
-        
-        st.markdown("---")
-
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.markdown("### Transaction Details")
-            
-            # Input using text box instead of slider
-            amount_str = st.text_input(
-                "Transaction Amount (USD)", 
-                value="100.00", 
-                help="Enter the exact dollar amount for the transaction."
-            )
-            
-            try:
-                amount = float(amount_str)
-            except ValueError:
-                amount = 0.0
-                st.warning("Please enter a valid numerical amount.")
-
-            st.write("") 
-
-            if st.button("Process & Verify Transaction", use_container_width=True, type="primary"):
-                
-                # Create the required 30-feature vector (V1-V28, Time, Amount)
-                raw_data = np.zeros(INPUT_DIM)
-                # Assign the amount to the last feature (index 29)
-                raw_data[29] = amount 
-                
-                # For a better simulation, we might inject random "normal" values for V1-V28
-                # For this PoC, we keep V1-V28 as 0 for simplicity, relying on the scaler to standardize
-                
-                # Processing block
-                with st.spinner('Running Deep Autoencoder Inference...'):
-                    error, anomaly = predict_transaction(MODEL, SCALER, THRESHOLD, raw_data)
-                
-                # Display Results
-                with col2:
-                    st.markdown("### Verification Results")
-                    
-                    if anomaly:
-                        st.error("🚨 FRAUD ALERT! High Risk Transaction Detected.")
-                        st.markdown(f"**Anomaly Score:** `{error:.6f}` (Above Threshold: `{THRESHOLD:.4f}`)")
-                        st.markdown("Immediate action has been taken: the transaction has been blocked.")
-                        st.metric(label="Status", value="BLOCKED", delta="HIGH RISK", delta_color="inverse")
-                    else:
-                        st.success("✅ TRANSACTION APPROVED: Normal Pattern in the transaction")
-                        st.markdown(f"**Anomaly Score:** `{error:.6f}` (Below Threshold: `{THRESHOLD:.4f}`)")
-                        st.markdown("This transaction matches expected behavior and has been successfully processed.")
-                        st.metric(label="Status", value="APPROVED", delta="LOW RISK", delta_color="normal")
-        
-        with col2:
-            st.empty() 
-
-    # --- ADMINISTRATOR DASHBOARD ---
-    elif page == "Administrator Dashboard" and st.session_state.is_admin:
-        
-        st.title("Fraud Analyst Operations Center 📈")
-        st.subheader("System Performance and Threshold Management")
-        
-        st.markdown("---")
-        
-        # Display Core Metrics
-        col_m1, col_m2, col_m3 = st.columns(3)
-        
-        with col_m1:
-            st.metric("Optimal Model Threshold (MSE)", f"{THRESHOLD:.4f}")
-        with col_m2:
-            st.metric("System Users", f"{len(auth.list_users().users)}", delta="New users since launch", delta_color="normal")
-        with col_m3:
-            st.metric("Average Inference Time", "30 ms", delta="< 50ms Target", delta_color="normal")
-            
-        st.markdown("---")
-            
-        st.markdown("### ⚙️ Live System Sensitivity Adjustment")
-        
-        with st.container(border=True):
-            st.caption("Adjusting the threshold directly impacts the system's sensitivity.")
-            
-            # Dynamic range based on the optimal threshold
-            min_val = float(THRESHOLD * 0.5)
-            max_val = float(THRESHOLD * 1.5)
-            
-            new_threshold = st.slider(
-                "Set New Operational Threshold", 
-                min_val, 
-                max_val, 
-                float(THRESHOLD),
-                step=0.0001,
-                format="%.4f"
-            )
-            
-            st.warning(f"**Proposed Threshold:** **{new_threshold:.4f}**")
-            
-            if new_threshold > THRESHOLD:
-                st.info("⬆️ **Increased Recall:** System is more sensitive; more transactions will be flagged.")
-            elif new_threshold < THRESHOLD:
-                st.info("⬇️ **Increased Precision:** System is less sensitive; only extreme anomalies will be flagged.")
-            else:
-                st.info("Currently running at the validated optimal threshold.")
-
-
+if __name__ == '__main__':
+    main()
