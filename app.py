@@ -207,21 +207,200 @@ def admin_dashboard():
     """UI for the Admin user."""
     st.markdown(f"<h1 style='color: {THEME_COLOR};'>Admin Dashboard</h1>", unsafe_allow_html=True)
     st.write(f"Welcome, Admin: {st.session_state.user.email}")
-    st.info("Here you would see aggregated fraud metrics, user activity logs, and system health checks.")
     
-    # Placeholder for viewing all transactions
-    st.subheader("Recent System Transactions (Demo)")
-    try:
-        # For simplicity, we'll just show a mock message.
-        st.warning("Fetching all transactions is resource-intensive. Using a placeholder for demonstration.")
-        st.dataframe({
-            'User': ['user123', 'admin@sec...'],
-            'Amount': [45.99, 1000.00],
-            'Prediction': ['Non-Fraud', 'Fraud'],
-            'Score': [0.001, 0.089]
-        })
-    except Exception as e:
-        st.error(f"Error fetching admin data: {e}")
+    # Create tabs for different admin functions
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 All Transactions", "👥 User Management", "⚙️ System Settings"])
+    
+    with tab1:
+        st.subheader("System Overview")
+        
+        # Fetch aggregated statistics
+        try:
+            app_id = st.session_state.app_id
+            users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+            
+            # Count total users
+            try:
+                all_users = st.session_state.fb_auth.list_users()
+                total_users = len(all_users.users)
+            except Exception:
+                total_users = "N/A"
+            
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Users", total_users)
+            with col2:
+                st.metric("Total Transactions", "---", help="Requires aggregation query")
+            with col3:
+                st.metric("Fraud Detected", "---", help="Requires aggregation query")
+            with col4:
+                st.metric("System Status", "✅ Online")
+            
+            st.markdown("---")
+            st.info("💡 **Tip**: Use the tabs above to manage users, view transactions, and configure system settings.")
+            
+        except Exception as e:
+            st.error(f"Error loading overview: {e}")
+    
+    with tab2:
+        st.subheader("All System Transactions")
+        
+        # Add filters
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_user = st.text_input("Filter by User Email (optional)")
+        with col2:
+            filter_fraud = st.selectbox("Filter by Status", ["All", "Fraud Only", "Non-Fraud Only"])
+        
+        if st.button("Load Transactions", type="primary"):
+            with st.spinner("Fetching transactions from database..."):
+                try:
+                    app_id = st.session_state.app_id
+                    users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+                    
+                    transactions_data = []
+                    
+                    # Get all users
+                    users_docs = users_ref.stream()
+                    
+                    for user_doc in users_docs:
+                        user_id = user_doc.id
+                        
+                        # Skip if filtering by specific user
+                        if filter_user:
+                            try:
+                                user_info = st.session_state.fb_auth.get_user(user_id)
+                                if filter_user.lower() not in user_info.email.lower():
+                                    continue
+                            except:
+                                continue
+                        
+                        # Get transactions for this user
+                        transactions_ref = users_ref.document(user_id).collection('transactions')
+                        transactions = transactions_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(50).stream()
+                        
+                        for trans in transactions:
+                            trans_data = trans.to_dict()
+                            
+                            # Apply fraud filter
+                            is_fraud = trans_data.get('prediction', {}).get('is_fraud', False)
+                            if filter_fraud == "Fraud Only" and not is_fraud:
+                                continue
+                            elif filter_fraud == "Non-Fraud Only" and is_fraud:
+                                continue
+                            
+                            # Get user email
+                            try:
+                                user_info = st.session_state.fb_auth.get_user(user_id)
+                                user_email = user_info.email
+                            except:
+                                user_email = user_id
+                            
+                            transactions_data.append({
+                                'User': user_email,
+                                'Amount': f"${trans_data.get('amount', 0):.2f}",
+                                'Status': '🚨 FRAUD' if is_fraud else '✅ Clear',
+                                'Score': f"{trans_data.get('prediction', {}).get('error_score', 0):.4f}",
+                                'Threshold': f"{trans_data.get('prediction', {}).get('threshold', 0):.4f}",
+                                'Timestamp': trans_data.get('timestamp', 'N/A')
+                            })
+                    
+                    if transactions_data:
+                        st.success(f"Found {len(transactions_data)} transactions")
+                        st.dataframe(transactions_data, use_container_width=True)
+                        
+                        # Summary statistics
+                        fraud_count = sum(1 for t in transactions_data if '🚨' in t['Status'])
+                        st.metric("Fraud Detected in Results", f"{fraud_count} / {len(transactions_data)}")
+                    else:
+                        st.warning("No transactions found matching your filters.")
+                        
+                except Exception as e:
+                    st.error(f"Error fetching transactions: {e}")
+    
+    with tab3:
+        st.subheader("User Management")
+        
+        # List all users
+        if st.button("Load All Users", type="primary"):
+            with st.spinner("Fetching users..."):
+                try:
+                    all_users = st.session_state.fb_auth.list_users()
+                    
+                    users_data = []
+                    for user in all_users.users:
+                        users_data.append({
+                            'Email': user.email,
+                            'UID': user.uid,
+                            'Created': user.user_metadata.creation_timestamp if hasattr(user, 'user_metadata') else 'N/A',
+                            'Admin': '✅' if user.email == ADMIN_EMAIL else '❌'
+                        })
+                    
+                    st.success(f"Found {len(users_data)} users")
+                    st.dataframe(users_data, use_container_width=True)
+                    
+                except Exception as e:
+                    st.error(f"Error fetching users: {e}")
+        
+        st.markdown("---")
+        
+        # Delete user section
+        with st.expander("⚠️ Delete User (Dangerous)"):
+            user_email_to_delete = st.text_input("User Email to Delete")
+            confirm_delete = st.checkbox("I confirm I want to delete this user")
+            
+            if st.button("Delete User", type="secondary"):
+                if not confirm_delete:
+                    st.error("Please check the confirmation box.")
+                elif user_email_to_delete == ADMIN_EMAIL:
+                    st.error("Cannot delete the admin account!")
+                elif user_email_to_delete:
+                    try:
+                        user = st.session_state.fb_auth.get_user_by_email(user_email_to_delete)
+                        st.session_state.fb_auth.delete_user(user.uid)
+                        st.success(f"User {user_email_to_delete} deleted successfully.")
+                    except Exception as e:
+                        st.error(f"Error deleting user: {e}")
+                else:
+                    st.error("Please enter a user email.")
+    
+    with tab4:
+        st.subheader("System Settings")
+        
+        st.info("🔧 **Model Configuration**")
+        st.write(f"Current Fraud Detection Threshold: **{st.session_state.threshold if st.session_state.threshold else 'Not loaded'}**")
+        
+        if st.session_state.model_loaded:
+            st.success("✅ AI Model is loaded and ready")
+        else:
+            st.warning("⚠️ AI Model not loaded. Load it from the customer portal first.")
+        
+        st.markdown("---")
+        
+        st.info("📊 **Database Configuration**")
+        st.write(f"App ID: `{st.session_state.app_id}`")
+        st.write(f"Database Timeout: `{DB_TIMEOUT_SECONDS}s`")
+        
+        st.markdown("---")
+        
+        # Clear all data (dangerous operation)
+        with st.expander("🗑️ Clear All Transaction Data (Very Dangerous)"):
+            st.warning("This will delete ALL transaction data for ALL users. This action cannot be undone!")
+            confirm_clear = st.checkbox("I understand this will delete all transaction data")
+            
+            if st.button("Clear All Data", type="secondary"):
+                if confirm_clear:
+                    try:
+                        app_id = st.session_state.app_id
+                        users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+                        
+                        # This is a simplified version - in production, use batch deletes
+                        st.warning("Data clearing not fully implemented for safety. Contact system administrator.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.error("Please confirm the action.")
 
 
 def customer_portal():
