@@ -461,14 +461,31 @@ def customer_portal():
                     return
                 
             # Display Result
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Anomaly Score", f"{error_score:.4f}")
+            with col2:
+                st.metric("Threshold", f"{threshold:.4f}")
+            with col3:
+                difference = error_score - threshold
+                st.metric("Difference", f"{difference:.4f}", delta=f"{'Over' if difference > 0 else 'Under'} threshold")
+            
             if is_anomaly:
                 st.error(f"🚨 FRAUD ALERT! ANOMALY DETECTED.")
-                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="inverse")
                 st.markdown("⚠️ **This transaction is flagged as suspicious and requires manual review.**")
+                st.caption(f"The reconstruction error ({error_score:.4f}) exceeds the threshold ({threshold:.4f}) by {difference:.4f}")
             else:
                 st.success("✅ Transaction is LIKELY LEGITIMATE.")
-                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="normal")
                 st.markdown("**Transaction cleared based on reconstruction error.**")
+                st.caption(f"The reconstruction error ({error_score:.4f}) is below the threshold ({threshold:.4f}) by {abs(difference):.4f}")
+            
+            # Debug information (expandable)
+            with st.expander("🔍 Debug Information"):
+                st.write("**Transaction Features (first 5):**")
+                st.code(raw_transaction_data[:5])
+                st.write("**Model Threshold:**", threshold)
+                st.write("**Calculated Error:**", error_score)
+                st.write("**Is Anomaly:**", is_anomaly)
 
             # Save to Database
             prediction_result = {
