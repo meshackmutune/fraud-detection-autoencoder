@@ -3,13 +3,12 @@ import numpy as np
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
-import os
-import json # Essential for parsing the new secret format
+import json
 
 # --- CONFIGURATION ---
 ADMIN_EMAIL = "admin@securebank.com"
 DB_TIMEOUT_SECONDS = 5
-THEME_COLOR = "#10B981" # Green color for the interface
+THEME_COLOR = "#10B981"  # Green color for the interface
 
 # --- FIREBASE INITIALIZATION ---
 
@@ -20,27 +19,27 @@ def initialize_firebase():
         try:
             # 1. Attempt to load the JSON-encoded string from the new secret key
             if "FIREBASE_CREDENTIALS_JSON" in st.secrets:
-                # Get the string and parse it back into a Python dictionary
                 credentials_string = st.secrets["FIREBASE_CREDENTIALS_JSON"]
                 service_account_info = json.loads(credentials_string)
             
             # Fallback (in case the user accidentally kept the old key name but formatted it as JSON)
             elif "FIREBASE_SERVICE_ACCOUNT" in st.secrets and isinstance(st.secrets["FIREBASE_SERVICE_ACCOUNT"], str):
-                 credentials_string = st.secrets["FIREBASE_SERVICE_ACCOUNT"]
-                 service_account_info = json.loads(credentials_string)
-                 st.warning("Using fallback secret key. Please update to FIREBASE_CREDENTIALS_JSON.")
+                credentials_string = st.secrets["FIREBASE_SERVICE_ACCOUNT"]
+                service_account_info = json.loads(credentials_string)
+                st.warning("Using fallback secret key. Please update to FIREBASE_CREDENTIALS_JSON.")
 
             # If no secret key is found, raise an error
             else:
                 raise KeyError("Neither 'FIREBASE_CREDENTIALS_JSON' nor 'FIREBASE_SERVICE_ACCOUNT' found in Streamlit Secrets.")
 
             # --- CRITICAL FIX: Ensure Newline Characters are Correct ---
-            # If the Streamlit/TOML parser is over-escaping the newlines, we force a fix here.
             if 'private_key' in service_account_info:
                 private_key_value = service_account_info['private_key']
-                # Replace literal \n sequences with actual newline characters
-                if '\\n' in private_key_value:
-                    service_account_info['private_key'] = private_key_value.replace('\\n', '\n')
+                # Handle multiple possible escape sequences
+                # Replace escaped newlines with actual newlines
+                private_key_value = private_key_value.replace('\\\\n', '\n')  # Double-escaped
+                private_key_value = private_key_value.replace('\\n', '\n')     # Single-escaped
+                service_account_info['private_key'] = private_key_value
             # ---------------------------------------------------------
             
             # 2. Convert to Firebase Credentials object
@@ -55,8 +54,18 @@ def initialize_firebase():
             db = firestore.client()
             return db, auth
             
+        except json.JSONDecodeError as je:
+            st.error(f"Firebase Initialization Error: Invalid JSON format in secrets. Error: {je}")
+            st.stop()
+            return None, None
+        except KeyError as ke:
+            st.error(f"Firebase Initialization Error: Missing required secret key. Error: {ke}")
+            st.stop()
+            return None, None
         except Exception as e:
-            st.error(f"Firebase Initialization Error: Check Streamlit Cloud Secrets for correct credentials. Error: {e}")
+            st.error(f"Firebase Initialization Error: Check Streamlit Cloud Secrets for correct credentials.")
+            st.error(f"Error details: {str(e)}")
+            st.stop()
             return None, None
     else:
         # App is already initialized
@@ -72,7 +81,7 @@ def init_session_state(db, fb_auth):
         st.session_state.fb_auth = fb_auth
         st.session_state.user = None
         st.session_state.is_admin = False
-        st.session_state.app_id = 'default-app-id' # Since we use st.secrets, we default this.
+        st.session_state.app_id = 'default-app-id'
         st.session_state.model_loaded = False
         st.session_state.model = None
         st.session_state.scaler = None
@@ -81,15 +90,18 @@ def init_session_state(db, fb_auth):
 def load_assets_and_set_state():
     """Loads model assets and updates session state."""
     if not st.session_state.model_loaded:
-        model, scaler, threshold = load_model_and_assets()
-        if model and scaler and threshold:
-            st.session_state.model = model
-            st.session_state.scaler = scaler
-            st.session_state.threshold = threshold
-            st.session_state.model_loaded = True
-            st.success("AI Model and assets loaded.")
-        else:
-            st.error("Could not load all necessary AI assets. Check logs.")
+        try:
+            model, scaler, threshold = load_model_and_assets()
+            if model and scaler and threshold:
+                st.session_state.model = model
+                st.session_state.scaler = scaler
+                st.session_state.threshold = threshold
+                st.session_state.model_loaded = True
+                st.success("AI Model and assets loaded.")
+            else:
+                st.error("Could not load all necessary AI assets. Check logs.")
+        except Exception as e:
+            st.error(f"Error loading model assets: {e}")
 
 # --- FIREBASE HELPER FUNCTIONS ---
 
@@ -107,8 +119,8 @@ def write_transaction_to_db(user_id, transaction_data, prediction_result):
     data = {
         'timestamp': firestore.SERVER_TIMESTAMP,
         'user_id': user_id,
-        'amount': float(transaction_data[-1]), # Last feature is 'Amount'
-        'features': [float(x) for x in transaction_data], # Store raw features
+        'amount': float(transaction_data[-1]),  # Last feature is 'Amount'
+        'features': [float(x) for x in transaction_data],  # Store raw features
         'prediction': {
             'is_fraud': prediction_result['is_fraud'],
             'error_score': prediction_result['error_score'],
@@ -133,18 +145,24 @@ def login_form():
         submitted = st.form_submit_button("Login", type="primary")
 
         if submitted:
+            if not email or not password:
+                st.error("Please enter both email and password.")
+                return
+                
             try:
                 user = st.session_state.fb_auth.get_user_by_email(email)
                 # In a real app, you'd use the client SDK for secure login. 
                 # Here, we verify the user exists for demonstration purposes.
-                if user and password: 
+                if user:
                     st.session_state.user = user
                     st.session_state.is_admin = (email == ADMIN_EMAIL)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid credentials.")
+            except auth.UserNotFoundError:
+                st.error("User not found. Please check your email or register.")
             except Exception as e:
-                st.error(f"Login failed. Check email and password. Error: {e}")
+                st.error(f"Login failed: {e}")
 
 def register_form():
     """Renders the registration form."""
@@ -155,6 +173,14 @@ def register_form():
         submitted = st.form_submit_button("Register", type="primary")
 
         if submitted:
+            if not email or not password:
+                st.error("Please enter both email and password.")
+                return
+                
+            if len(password) < 6:
+                st.error("Password must be at least 6 characters long.")
+                return
+                
             try:
                 user = st.session_state.fb_auth.create_user(
                     email=email,
@@ -162,6 +188,8 @@ def register_form():
                 )
                 st.success(f"Account created successfully for {user.email}! Please log in.")
                 st.info("Note: The password is visible to Streamlit's backend in this demo. Use a dummy password.")
+            except auth.EmailAlreadyExistsError:
+                st.error("An account with this email already exists. Please login.")
             except Exception as e:
                 st.error(f"Registration failed: {e}")
 
@@ -171,7 +199,7 @@ def logout_button():
         if st.sidebar.button("Logout"):
             st.session_state.user = None
             st.session_state.is_admin = False
-            st.experimental_rerun()
+            st.rerun()
 
 # --- MAIN APP UI SCREENS ---
 
@@ -219,40 +247,49 @@ def customer_portal():
             st.markdown("---")
             st.info("The remaining 29 features (Time, V1-V28) are auto-populated for this demo.")
             
-            # Generate mock features (V1-V28) and Time. Time is always the first feature.
-            # V-features are typically normalized/PCA'd, so they are close to 0.
-            mock_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2) # 28 V-features
-            time_feature = np.array([45000]) # Mock Time feature
-            
-            # The final feature vector structure MUST match the training data (30 features: Time, V1-V28, Amount)
-            try:
-                amount_feature = np.array([float(transaction_amount)])
-                raw_transaction_data = np.concatenate([time_feature, mock_features, amount_feature])
-                
-            except ValueError:
-                st.error("Please enter a valid number for the Transaction Amount.")
-                return
-
             submitted = st.form_submit_button("Check for Fraud", type="primary")
 
         if submitted:
+            # Validate amount input
+            try:
+                amount_value = float(transaction_amount)
+                if amount_value <= 0:
+                    st.error("Please enter a positive transaction amount.")
+                    return
+            except ValueError:
+                st.error("Please enter a valid number for the Transaction Amount.")
+                return
+            
+            # Generate mock features (V1-V28) and Time. Time is always the first feature.
+            # V-features are typically normalized/PCA'd, so they are close to 0.
+            mock_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2)  # 28 V-features
+            time_feature = np.array([45000])  # Mock Time feature
+            amount_feature = np.array([amount_value])
+            
+            # The final feature vector structure MUST match the training data (30 features: Time, V1-V28, Amount)
+            raw_transaction_data = np.concatenate([time_feature, mock_features, amount_feature])
+            
             # Run Prediction
             with st.spinner("Analyzing transaction for anomalies..."):
-                model = st.session_state.model
-                scaler = st.session_state.scaler
-                threshold = st.session_state.threshold
-                
-                error_score, is_anomaly = predict_transaction(model, scaler, threshold, raw_transaction_data)
+                try:
+                    model = st.session_state.model
+                    scaler = st.session_state.scaler
+                    threshold = st.session_state.threshold
+                    
+                    error_score, is_anomaly = predict_transaction(model, scaler, threshold, raw_transaction_data)
+                except Exception as e:
+                    st.error(f"Error during prediction: {e}")
+                    return
                 
             # Display Result
             if is_anomaly:
-                st.error(f"FRAUD ALERT! ANOMALY DETECTED.")
+                st.error(f"🚨 FRAUD ALERT! ANOMALY DETECTED.")
                 st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="inverse")
                 st.markdown("⚠️ **This transaction is flagged as suspicious and requires manual review.**")
             else:
-                st.success("Transaction is LIKELY LEGITIMATE.")
+                st.success("✅ Transaction is LIKELY LEGITIMATE.")
                 st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="normal")
-                st.markdown("✅ **Transaction cleared based on reconstruction error.**")
+                st.markdown("**Transaction cleared based on reconstruction error.**")
 
             # Save to Database
             prediction_result = {
@@ -263,6 +300,7 @@ def customer_portal():
             write_transaction_to_db(st.session_state.user.uid, raw_transaction_data, prediction_result)
             st.sidebar.success("Transaction saved to your history.")
             
+        st.markdown("---")
         st.subheader("Your Transaction History (Demo)")
         st.write("This section would typically pull data from the user's private Firestore collection.")
         # Mock history data
@@ -307,7 +345,7 @@ def main():
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
     }}
     .stButton>button:hover {{
-        background-color: #059669; /* Darker green on hover */
+        background-color: #059669;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -315,7 +353,7 @@ def main():
     # 1. Initialize Firebase and Get Instances
     db, fb_auth = initialize_firebase()
     
-    if not db:
+    if not db or not fb_auth:
         st.warning("Application halted. Check Streamlit logs for Firebase initialization error.")
         return
         
