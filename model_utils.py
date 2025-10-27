@@ -4,8 +4,7 @@ import json
 import pickle
 import streamlit as st
 import numpy as np
-import os # Required for file existence check
-# Note: You MUST add 'gdown' to your requirements.txt for this to work on Streamlit Cloud!
+import os 
 
 # --- CONFIGURATION (Must match your training setup) ---
 INPUT_DIM = 30
@@ -70,11 +69,9 @@ def load_and_cache_data():
 @st.cache_resource
 def load_model_and_assets():
     """Loads the model, scaler, and threshold only once upon startup."""
-    # NOTE: We DO NOT need the large CSV file here, only the small artifacts.
     try:
         # Load Model
         model = DeepAutoencoder(INPUT_DIM)
-        # Load state dictionary, mapping any CUDA tensors to CPU
         model.load_state_dict(torch.load('fraud_autoencoder_model.pth', map_location=DEVICE))
         model.eval()
         
@@ -96,7 +93,6 @@ def load_model_and_assets():
         return None, None, None
 
 # --- 3. INFERENCE FUNCTION (The Service Logic) ---
-# ... (This function remains unchanged)
 def predict_transaction(model, scaler, threshold, raw_transaction_data):
     """Processes a raw vector through the model and returns the result."""
     
