@@ -430,6 +430,24 @@ def customer_portal():
                 st.session_state.threshold = custom_threshold
                 st.info(f"Using custom threshold: {custom_threshold:.4f}")
         
+        # Add pre-defined test scenarios
+        st.markdown("---")
+        st.write("**Quick Test Scenarios** (Optional)")
+        col1, col2, col3 = st.columns(3)
+        
+        test_scenario = None
+        with col1:
+            if st.button("🛒 Small Purchase ($25)"):
+                test_scenario = "small"
+        with col2:
+            if st.button("💳 Medium Purchase ($150)"):
+                test_scenario = "medium"
+        with col3:
+            if st.button("🚨 Large Purchase ($2500)"):
+                test_scenario = "large"
+        
+        st.markdown("---")
+        
         with st.form("transaction_form"):
             # Replace slider with text input for amount (V1 feature)
             transaction_amount = st.text_input(
@@ -444,34 +462,55 @@ def customer_portal():
             
             submitted = st.form_submit_button("Check for Fraud", type="primary")
 
-        if submitted:
+        if submitted or test_scenario:
             # Validate amount input
             try:
-                amount_value = float(transaction_amount)
-                if amount_value <= 0:
-                    st.error("Please enter a positive transaction amount.")
-                    return
+                if test_scenario:
+                    # Use predefined amounts for test scenarios
+                    scenario_amounts = {"small": 25.0, "medium": 150.0, "large": 2500.0}
+                    amount_value = scenario_amounts[test_scenario]
+                    st.info(f"Testing with {test_scenario} purchase: ${amount_value}")
+                else:
+                    amount_value = float(transaction_amount)
+                    if amount_value <= 0:
+                        st.error("Please enter a positive transaction amount.")
+                        return
             except ValueError:
                 st.error("Please enter a valid number for the Transaction Amount.")
                 return
             
             # IMPORTANT: Generate realistic mock features
-            # The V-features in the Credit Card dataset are PCA-transformed and typically range between -3 and 3
-            # We'll generate more realistic values
-            np.random.seed()  # Ensure randomness
+            # Strategy: Use smaller variance for lower amounts (more typical), higher for large amounts
+            np.random.seed()
             
-            # Generate mock V-features (V1-V28) with realistic ranges
-            # Most legitimate transactions have V-features close to 0
-            mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)  # Reduced scale for more realistic data
-            
-            # Time feature: Random time within a day (0-86400 seconds)
-            time_feature = np.array([np.random.uniform(0, 86400)])
+            if test_scenario == "small":
+                # Small purchase - very typical pattern
+                mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
+                time_feature = np.array([43200])  # Midday
+            elif test_scenario == "medium":
+                # Medium purchase - normal pattern
+                mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)
+                time_feature = np.array([54000])  # Afternoon
+            elif test_scenario == "large":
+                # Large purchase - suspicious pattern (higher variance)
+                mock_v_features = np.random.normal(loc=0.0, scale=1.2, size=INPUT_DIM - 2)
+                mock_v_features[0] = 2.5  # Abnormal V1 value
+                mock_v_features[2] = -2.8  # Abnormal V3 value
+                time_feature = np.array([3600])  # Late night (suspicious)
+            else:
+                # Manual entry - use moderate variance
+                if amount_value < 100:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.4, size=INPUT_DIM - 2)
+                elif amount_value < 500:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.6, size=INPUT_DIM - 2)
+                else:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.9, size=INPUT_DIM - 2)
+                time_feature = np.array([np.random.uniform(0, 86400)])
             
             # Amount feature
             amount_feature = np.array([amount_value])
             
             # CRITICAL: The raw transaction data should be UNSCALED
-            # The scaler will be applied inside predict_transaction()
             raw_transaction_data = np.concatenate([time_feature, mock_v_features, amount_feature])
             
             # Run Prediction
