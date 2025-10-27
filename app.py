@@ -417,18 +417,30 @@ def customer_portal():
         # Add threshold adjustment option
         with st.expander("⚙️ Advanced Settings"):
             st.write("**Fraud Detection Sensitivity**")
-            use_custom_threshold = st.checkbox("Override default threshold", value=False)
+            
+            # Show current threshold from config
+            original_threshold = st.session_state.threshold if st.session_state.threshold else 0.1
+            st.warning(f"⚠️ Current threshold from config.json: {original_threshold:.4f}")
+            
+            if original_threshold > 0.5:
+                st.error("🚨 Your threshold is EXTREMELY HIGH! This will cause almost all transactions to be marked as legitimate.")
+                st.info("💡 Recommended: Use the override below to set a more reasonable threshold (0.01 - 0.15)")
+            
+            use_custom_threshold = st.checkbox("Override default threshold", value=True)  # Default to True
             if use_custom_threshold:
                 custom_threshold = st.slider(
                     "Custom Threshold (higher = less sensitive)", 
                     min_value=0.0, 
-                    max_value=1.0, 
-                    value=float(st.session_state.threshold) if st.session_state.threshold else 0.1,
-                    step=0.01,
-                    help="Increase to reduce false positives, decrease to catch more fraud"
+                    max_value=0.5, 
+                    value=0.05,  # Start with a reasonable default
+                    step=0.001,
+                    format="%.4f",
+                    help="Increase to reduce false positives, decrease to catch more fraud. Typical range: 0.01-0.15"
                 )
                 st.session_state.threshold = custom_threshold
-                st.info(f"Using custom threshold: {custom_threshold:.4f}")
+                st.success(f"✅ Using custom threshold: {custom_threshold:.4f}")
+            else:
+                st.warning(f"Using original threshold: {original_threshold:.4f}")
         
         # Add pre-defined test scenarios
         st.markdown("---")
