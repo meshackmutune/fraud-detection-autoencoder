@@ -34,8 +34,16 @@ def initialize_firebase():
             else:
                 raise KeyError("Neither 'FIREBASE_CREDENTIALS_JSON' nor 'FIREBASE_SERVICE_ACCOUNT' found in Streamlit Secrets.")
 
+            # --- CRITICAL FIX: Ensure Newline Characters are Correct ---
+            # If the Streamlit/TOML parser is over-escaping the newlines, we force a fix here.
+            if 'private_key' in service_account_info:
+                private_key_value = service_account_info['private_key']
+                # Replace literal \n sequences with actual newline characters
+                if '\\n' in private_key_value:
+                    service_account_info['private_key'] = private_key_value.replace('\\n', '\n')
+            # ---------------------------------------------------------
+            
             # 2. Convert to Firebase Credentials object
-            # Note: The private key string now contains correct, escaped \n characters
             cred = credentials.Certificate(service_account_info)
             
             # 3. Initialize the app
