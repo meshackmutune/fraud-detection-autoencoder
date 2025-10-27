@@ -541,6 +541,13 @@ def main():
     
     # 3. Main Content Rendering
     st.sidebar.title("SecureBank PoC")
+    
+    # Debug information in sidebar
+    if st.session_state.user:
+        st.sidebar.success(f"Logged in as: {st.session_state.user.email}")
+        st.sidebar.info(f"Admin status: {'✅ Yes' if st.session_state.is_admin else '❌ No'}")
+        st.sidebar.caption(f"User ID: {st.session_state.user.uid}")
+    
     logout_button() 
     
     if st.session_state.user:
