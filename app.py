@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 import os
-import json 
+import json # Essential for parsing the new secret format
 
 # --- CONFIGURATION ---
 ADMIN_EMAIL = "admin@securebank.com"
@@ -15,15 +15,27 @@ THEME_COLOR = "#10B981" # Green color for the interface
 
 @st.cache_resource
 def initialize_firebase():
-    """Initializes the Firebase Admin SDK using st.secrets."""
+    """Initializes the Firebase Admin SDK using the securely encoded JSON string from st.secrets."""
     if not firebase_admin._apps:
         try:
-            # 1. Load credentials securely from st.secrets (which reads .streamlit/secrets.toml)
-            # This fixes the Firebase Initialization Error by using the credentials 
-            # pasted into the Streamlit Cloud Secrets panel.
-            service_account_info = dict(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
+            # 1. Attempt to load the JSON-encoded string from the new secret key
+            if "FIREBASE_CREDENTIALS_JSON" in st.secrets:
+                # Get the string and parse it back into a Python dictionary
+                credentials_string = st.secrets["FIREBASE_CREDENTIALS_JSON"]
+                service_account_info = json.loads(credentials_string)
             
+            # Fallback (in case the user accidentally kept the old key name but formatted it as JSON)
+            elif "FIREBASE_SERVICE_ACCOUNT" in st.secrets and isinstance(st.secrets["FIREBASE_SERVICE_ACCOUNT"], str):
+                 credentials_string = st.secrets["FIREBASE_SERVICE_ACCOUNT"]
+                 service_account_info = json.loads(credentials_string)
+                 st.warning("Using fallback secret key. Please update to FIREBASE_CREDENTIALS_JSON.")
+
+            # If no secret key is found, raise an error
+            else:
+                raise KeyError("Neither 'FIREBASE_CREDENTIALS_JSON' nor 'FIREBASE_SERVICE_ACCOUNT' found in Streamlit Secrets.")
+
             # 2. Convert to Firebase Credentials object
+            # Note: The private key string now contains correct, escaped \n characters
             cred = credentials.Certificate(service_account_info)
             
             # 3. Initialize the app
@@ -115,16 +127,9 @@ def login_form():
         if submitted:
             try:
                 user = st.session_state.fb_auth.get_user_by_email(email)
-                # Simple password check (Note: For true production, Firebase SDK handles this via signInWithEmailAndPassword, 
-                # but Admin SDK requires a custom token or complex verification outside this scope. 
-                # We use Admin SDK here only for creating/getting users, assuming a simplified token flow later).
-                # For this demonstration, we rely on Firebase's user record existence as 'login success'.
-                
-                # In a real app, you'd use the client SDK:
-                # user_credentials = st.session_state.fb_auth.sign_in_with_email_and_password(email, password)
-                
-                # For simplicity with Admin SDK in this environment:
-                if user and password: # Check if user exists and a password was entered
+                # In a real app, you'd use the client SDK for secure login. 
+                # Here, we verify the user exists for demonstration purposes.
+                if user and password: 
                     st.session_state.user = user
                     st.session_state.is_admin = (email == ADMIN_EMAIL)
                     st.experimental_rerun()
@@ -171,7 +176,6 @@ def admin_dashboard():
     # Placeholder for viewing all transactions
     st.subheader("Recent System Transactions (Demo)")
     try:
-        # Path: artifacts/{appId}/public/data/transactions (or iterate over users)
         # For simplicity, we'll just show a mock message.
         st.warning("Fetching all transactions is resource-intensive. Using a placeholder for demonstration.")
         st.dataframe({
@@ -204,7 +208,6 @@ def customer_portal():
             )
             
             # Use placeholder inputs for the 29 V-features (V1 to V28) + Time
-            # For a real system, these would come from the transaction system, not user input.
             st.markdown("---")
             st.info("The remaining 29 features (Time, V1-V28) are auto-populated for this demo.")
             
