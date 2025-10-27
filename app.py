@@ -207,21 +207,200 @@ def admin_dashboard():
     """UI for the Admin user."""
     st.markdown(f"<h1 style='color: {THEME_COLOR};'>Admin Dashboard</h1>", unsafe_allow_html=True)
     st.write(f"Welcome, Admin: {st.session_state.user.email}")
-    st.info("Here you would see aggregated fraud metrics, user activity logs, and system health checks.")
     
-    # Placeholder for viewing all transactions
-    st.subheader("Recent System Transactions (Demo)")
-    try:
-        # For simplicity, we'll just show a mock message.
-        st.warning("Fetching all transactions is resource-intensive. Using a placeholder for demonstration.")
-        st.dataframe({
-            'User': ['user123', 'admin@sec...'],
-            'Amount': [45.99, 1000.00],
-            'Prediction': ['Non-Fraud', 'Fraud'],
-            'Score': [0.001, 0.089]
-        })
-    except Exception as e:
-        st.error(f"Error fetching admin data: {e}")
+    # Create tabs for different admin functions
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 All Transactions", "👥 User Management", "⚙️ System Settings"])
+    
+    with tab1:
+        st.subheader("System Overview")
+        
+        # Fetch aggregated statistics
+        try:
+            app_id = st.session_state.app_id
+            users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+            
+            # Count total users
+            try:
+                all_users = st.session_state.fb_auth.list_users()
+                total_users = len(all_users.users)
+            except Exception:
+                total_users = "N/A"
+            
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Users", total_users)
+            with col2:
+                st.metric("Total Transactions", "---", help="Requires aggregation query")
+            with col3:
+                st.metric("Fraud Detected", "---", help="Requires aggregation query")
+            with col4:
+                st.metric("System Status", "✅ Online")
+            
+            st.markdown("---")
+            st.info("💡 **Tip**: Use the tabs above to manage users, view transactions, and configure system settings.")
+            
+        except Exception as e:
+            st.error(f"Error loading overview: {e}")
+    
+    with tab2:
+        st.subheader("All System Transactions")
+        
+        # Add filters
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_user = st.text_input("Filter by User Email (optional)")
+        with col2:
+            filter_fraud = st.selectbox("Filter by Status", ["All", "Fraud Only", "Non-Fraud Only"])
+        
+        if st.button("Load Transactions", type="primary"):
+            with st.spinner("Fetching transactions from database..."):
+                try:
+                    app_id = st.session_state.app_id
+                    users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+                    
+                    transactions_data = []
+                    
+                    # Get all users
+                    users_docs = users_ref.stream()
+                    
+                    for user_doc in users_docs:
+                        user_id = user_doc.id
+                        
+                        # Skip if filtering by specific user
+                        if filter_user:
+                            try:
+                                user_info = st.session_state.fb_auth.get_user(user_id)
+                                if filter_user.lower() not in user_info.email.lower():
+                                    continue
+                            except:
+                                continue
+                        
+                        # Get transactions for this user
+                        transactions_ref = users_ref.document(user_id).collection('transactions')
+                        transactions = transactions_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(50).stream()
+                        
+                        for trans in transactions:
+                            trans_data = trans.to_dict()
+                            
+                            # Apply fraud filter
+                            is_fraud = trans_data.get('prediction', {}).get('is_fraud', False)
+                            if filter_fraud == "Fraud Only" and not is_fraud:
+                                continue
+                            elif filter_fraud == "Non-Fraud Only" and is_fraud:
+                                continue
+                            
+                            # Get user email
+                            try:
+                                user_info = st.session_state.fb_auth.get_user(user_id)
+                                user_email = user_info.email
+                            except:
+                                user_email = user_id
+                            
+                            transactions_data.append({
+                                'User': user_email,
+                                'Amount': f"${trans_data.get('amount', 0):.2f}",
+                                'Status': '🚨 FRAUD' if is_fraud else '✅ Clear',
+                                'Score': f"{trans_data.get('prediction', {}).get('error_score', 0):.4f}",
+                                'Threshold': f"{trans_data.get('prediction', {}).get('threshold', 0):.4f}",
+                                'Timestamp': trans_data.get('timestamp', 'N/A')
+                            })
+                    
+                    if transactions_data:
+                        st.success(f"Found {len(transactions_data)} transactions")
+                        st.dataframe(transactions_data, use_container_width=True)
+                        
+                        # Summary statistics
+                        fraud_count = sum(1 for t in transactions_data if '🚨' in t['Status'])
+                        st.metric("Fraud Detected in Results", f"{fraud_count} / {len(transactions_data)}")
+                    else:
+                        st.warning("No transactions found matching your filters.")
+                        
+                except Exception as e:
+                    st.error(f"Error fetching transactions: {e}")
+    
+    with tab3:
+        st.subheader("User Management")
+        
+        # List all users
+        if st.button("Load All Users", type="primary"):
+            with st.spinner("Fetching users..."):
+                try:
+                    all_users = st.session_state.fb_auth.list_users()
+                    
+                    users_data = []
+                    for user in all_users.users:
+                        users_data.append({
+                            'Email': user.email,
+                            'UID': user.uid,
+                            'Created': user.user_metadata.creation_timestamp if hasattr(user, 'user_metadata') else 'N/A',
+                            'Admin': '✅' if user.email == ADMIN_EMAIL else '❌'
+                        })
+                    
+                    st.success(f"Found {len(users_data)} users")
+                    st.dataframe(users_data, use_container_width=True)
+                    
+                except Exception as e:
+                    st.error(f"Error fetching users: {e}")
+        
+        st.markdown("---")
+        
+        # Delete user section
+        with st.expander("⚠️ Delete User (Dangerous)"):
+            user_email_to_delete = st.text_input("User Email to Delete")
+            confirm_delete = st.checkbox("I confirm I want to delete this user")
+            
+            if st.button("Delete User", type="secondary"):
+                if not confirm_delete:
+                    st.error("Please check the confirmation box.")
+                elif user_email_to_delete == ADMIN_EMAIL:
+                    st.error("Cannot delete the admin account!")
+                elif user_email_to_delete:
+                    try:
+                        user = st.session_state.fb_auth.get_user_by_email(user_email_to_delete)
+                        st.session_state.fb_auth.delete_user(user.uid)
+                        st.success(f"User {user_email_to_delete} deleted successfully.")
+                    except Exception as e:
+                        st.error(f"Error deleting user: {e}")
+                else:
+                    st.error("Please enter a user email.")
+    
+    with tab4:
+        st.subheader("System Settings")
+        
+        st.info("🔧 **Model Configuration**")
+        st.write(f"Current Fraud Detection Threshold: **{st.session_state.threshold if st.session_state.threshold else 'Not loaded'}**")
+        
+        if st.session_state.model_loaded:
+            st.success("✅ AI Model is loaded and ready")
+        else:
+            st.warning("⚠️ AI Model not loaded. Load it from the customer portal first.")
+        
+        st.markdown("---")
+        
+        st.info("📊 **Database Configuration**")
+        st.write(f"App ID: `{st.session_state.app_id}`")
+        st.write(f"Database Timeout: `{DB_TIMEOUT_SECONDS}s`")
+        
+        st.markdown("---")
+        
+        # Clear all data (dangerous operation)
+        with st.expander("🗑️ Clear All Transaction Data (Very Dangerous)"):
+            st.warning("This will delete ALL transaction data for ALL users. This action cannot be undone!")
+            confirm_clear = st.checkbox("I understand this will delete all transaction data")
+            
+            if st.button("Clear All Data", type="secondary"):
+                if confirm_clear:
+                    try:
+                        app_id = st.session_state.app_id
+                        users_ref = st.session_state.db.collection('artifacts').document(app_id).collection('users')
+                        
+                        # This is a simplified version - in production, use batch deletes
+                        st.warning("Data clearing not fully implemented for safety. Contact system administrator.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.error("Please confirm the action.")
 
 
 def customer_portal():
@@ -234,6 +413,55 @@ def customer_portal():
     
     if st.session_state.model_loaded:
         st.subheader("Simulate a Transaction")
+        
+        # Add threshold adjustment option
+        with st.expander("⚙️ Advanced Settings"):
+            st.write("**Fraud Detection Sensitivity**")
+            
+            # Show current threshold from config
+            original_threshold = st.session_state.threshold if st.session_state.threshold else 0.1
+            st.warning(f"⚠️ Current threshold from config.json: {original_threshold:.4f}")
+            
+            if original_threshold > 0.5:
+                st.error("🚨 Your threshold is EXTREMELY HIGH! This will cause almost all transactions to be marked as legitimate.")
+                st.info("💡 Recommended: Use the override below to set a more reasonable threshold (0.01 - 0.15)")
+            
+            use_custom_threshold = st.checkbox("Override default threshold", value=True)  # Default to True
+            if use_custom_threshold:
+                custom_threshold = st.slider(
+                    "Custom Threshold (higher = less sensitive)", 
+                    min_value=0.0, 
+                    max_value=0.5, 
+                    value=0.05,  # Start with a reasonable default
+                    step=0.001,
+                    format="%.4f",
+                    help="Increase to reduce false positives, decrease to catch more fraud. Typical range: 0.01-0.15"
+                )
+                st.session_state.threshold = custom_threshold
+                st.success(f"✅ Using custom threshold: {custom_threshold:.4f}")
+            else:
+                st.warning(f"Using original threshold: {original_threshold:.4f}")
+        
+        # Add pre-defined test scenarios
+        st.markdown("---")
+        st.write("**Quick Test Scenarios** (Optional)")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        test_scenario = None
+        with col1:
+            if st.button("🛒 Small Purchase ($25)"):
+                test_scenario = "small"
+        with col2:
+            if st.button("💳 Medium Purchase ($150)"):
+                test_scenario = "medium"
+        with col3:
+            if st.button("🚨 Large Purchase ($2500)"):
+                test_scenario = "large"
+        with col4:
+            if st.button("🧪 Zero Features Test"):
+                test_scenario = "zero"
+        
+        st.markdown("---")
         
         with st.form("transaction_form"):
             # Replace slider with text input for amount (V1 feature)
@@ -249,25 +477,56 @@ def customer_portal():
             
             submitted = st.form_submit_button("Check for Fraud", type="primary")
 
-        if submitted:
+        if submitted or test_scenario:
             # Validate amount input
             try:
-                amount_value = float(transaction_amount)
-                if amount_value <= 0:
-                    st.error("Please enter a positive transaction amount.")
-                    return
+                if test_scenario:
+                    # Use predefined amounts for test scenarios
+                    scenario_amounts = {"small": 25.0, "medium": 150.0, "large": 2500.0}
+                    amount_value = scenario_amounts[test_scenario]
+                    st.info(f"Testing with {test_scenario} purchase: ${amount_value}")
+                else:
+                    amount_value = float(transaction_amount)
+                    if amount_value <= 0:
+                        st.error("Please enter a positive transaction amount.")
+                        return
             except ValueError:
                 st.error("Please enter a valid number for the Transaction Amount.")
                 return
             
-            # Generate mock features (V1-V28) and Time. Time is always the first feature.
-            # V-features are typically normalized/PCA'd, so they are close to 0.
-            mock_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2)  # 28 V-features
-            time_feature = np.array([45000])  # Mock Time feature
+            # IMPORTANT: Generate realistic mock features
+            # Strategy: Use smaller variance for lower amounts (more typical), higher for large amounts
+            np.random.seed()
+            
+            if test_scenario == "small":
+                # Small purchase - very typical pattern
+                mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
+                time_feature = np.array([43200])  # Midday
+            elif test_scenario == "medium":
+                # Medium purchase - normal pattern
+                mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)
+                time_feature = np.array([54000])  # Afternoon
+            elif test_scenario == "large":
+                # Large purchase - suspicious pattern (higher variance)
+                mock_v_features = np.random.normal(loc=0.0, scale=1.2, size=INPUT_DIM - 2)
+                mock_v_features[0] = 2.5  # Abnormal V1 value
+                mock_v_features[2] = -2.8  # Abnormal V3 value
+                time_feature = np.array([3600])  # Late night (suspicious)
+            else:
+                # Manual entry - use moderate variance
+                if amount_value < 100:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.4, size=INPUT_DIM - 2)
+                elif amount_value < 500:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.6, size=INPUT_DIM - 2)
+                else:
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.9, size=INPUT_DIM - 2)
+                time_feature = np.array([np.random.uniform(0, 86400)])
+            
+            # Amount feature
             amount_feature = np.array([amount_value])
             
-            # The final feature vector structure MUST match the training data (30 features: Time, V1-V28, Amount)
-            raw_transaction_data = np.concatenate([time_feature, mock_features, amount_feature])
+            # CRITICAL: The raw transaction data should be UNSCALED
+            raw_transaction_data = np.concatenate([time_feature, mock_v_features, amount_feature])
             
             # Run Prediction
             with st.spinner("Analyzing transaction for anomalies..."):
@@ -279,17 +538,61 @@ def customer_portal():
                     error_score, is_anomaly = predict_transaction(model, scaler, threshold, raw_transaction_data)
                 except Exception as e:
                     st.error(f"Error during prediction: {e}")
+                    st.exception(e)
                     return
                 
             # Display Result
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Anomaly Score", f"{error_score:.4f}")
+            with col2:
+                st.metric("Threshold", f"{threshold:.4f}")
+            with col3:
+                difference = error_score - threshold
+                st.metric("Difference", f"{difference:.4f}", delta=f"{'Over' if difference > 0 else 'Under'} threshold")
+            
             if is_anomaly:
                 st.error(f"🚨 FRAUD ALERT! ANOMALY DETECTED.")
-                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="inverse")
                 st.markdown("⚠️ **This transaction is flagged as suspicious and requires manual review.**")
+                st.caption(f"The reconstruction error ({error_score:.4f}) exceeds the threshold ({threshold:.4f}) by {difference:.4f}")
             else:
                 st.success("✅ Transaction is LIKELY LEGITIMATE.")
-                st.metric(label="Anomaly Score", value=f"{error_score:.4f}", delta=f"Threshold: {threshold:.4f}", delta_color="normal")
                 st.markdown("**Transaction cleared based on reconstruction error.**")
+                st.caption(f"The reconstruction error ({error_score:.4f}) is below the threshold ({threshold:.4f}) by {abs(difference):.4f}")
+            
+            # Debug information (expandable)
+            with st.expander("🔍 Debug Information", expanded=True):
+                st.write("**Model Configuration:**")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                with col_d1:
+                    st.metric("Current Threshold", f"{threshold:.4f}")
+                with col_d2:
+                    st.metric("Error Score", f"{error_score:.4f}")
+                with col_d3:
+                    st.metric("Ratio (Error/Threshold)", f"{(error_score/threshold):.2f}x")
+                
+                st.write("**Transaction Features (first 10):**")
+                st.code(raw_transaction_data[:10])
+                
+                st.write("**Feature Statistics:**")
+                st.write(f"- Mean: {np.mean(raw_transaction_data):.4f}")
+                st.write(f"- Std Dev: {np.std(raw_transaction_data):.4f}")
+                st.write(f"- Min: {np.min(raw_transaction_data):.4f}")
+                st.write(f"- Max: {np.max(raw_transaction_data):.4f}")
+                
+                st.write("**Scaled Features (after scaler, first 10):**")
+                scaled = scaler.transform(raw_transaction_data.reshape(1, -1))
+                st.code(scaled[0][:10])
+                
+                st.write("**Analysis:**")
+                if error_score > 0.5:
+                    st.error("❌ ERROR SCORE IS EXTREMELY HIGH - Features are completely unrecognizable to the model")
+                elif error_score > 0.2:
+                    st.warning("⚠️ ERROR SCORE IS HIGH - Features don't match typical patterns")
+                elif error_score > threshold:
+                    st.info("ℹ️ Error exceeds threshold by a small margin")
+                else:
+                    st.success("✅ Error is within acceptable range")
 
             # Save to Database
             prediction_result = {
@@ -362,6 +665,13 @@ def main():
     
     # 3. Main Content Rendering
     st.sidebar.title("SecureBank PoC")
+    
+    # Debug information in sidebar
+    if st.session_state.user:
+        st.sidebar.success(f"Logged in as: {st.session_state.user.email}")
+        st.sidebar.info(f"Admin status: {'✅ Yes' if st.session_state.is_admin else '❌ No'}")
+        st.sidebar.caption(f"User ID: {st.session_state.user.uid}")
+    
     logout_button() 
     
     if st.session_state.user:
