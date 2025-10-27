@@ -4,4 +4,5 @@ numpy
 torch
 scikit-learn
 matplotlib
+firebase-admin
 gdown
