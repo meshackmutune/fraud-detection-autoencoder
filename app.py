@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import firebase_admin
 import os
+import json
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 
@@ -328,4 +329,5 @@ else:
                 st.info("⬇️ **Increased Precision:** System is less sensitive; only extreme anomalies will be flagged.")
             else:
                 st.info("Currently running at the validated optimal threshold.")
+
 
