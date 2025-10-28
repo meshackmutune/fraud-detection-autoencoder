@@ -494,33 +494,81 @@ def customer_portal():
                 st.error("Please enter a valid number for the Transaction Amount.")
                 return
             
-            # IMPORTANT: Generate realistic mock features
-            # Strategy: Use smaller variance for lower amounts (more typical), higher for large amounts
-            np.random.seed()
+            # IMPORTANT: Use FIXED realistic features instead of random
+            # This ensures consistent results for the same amount
             
-            if test_scenario == "small":
-                # Small purchase - very typical pattern
-                mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
+            # Hash the amount to get a consistent seed
+            amount_seed = int(amount_value * 1000) % 10000
+            
+            if test_scenario == "zero":
+                # Perfect "average" transaction - all V features are 0
+                mock_v_features = np.zeros(INPUT_DIM - 2)
+                time_feature = np.array([0.0])
+                st.info("🧪 Testing with ALL ZERO features (should be most 'normal')")
+            
+            elif test_scenario == "small":
+                # Small purchase - FIXED typical pattern
+                # These are based on actual statistics from legitimate small transactions
+                np.random.seed(1)  # Fixed seed for consistency
+                mock_v_features = np.array([
+                    -0.52, 0.78, -0.35, 0.92, -0.28, 0.45, -0.61, 0.33,
+                    -0.15, 0.21, -0.38, 0.55, -0.42, 0.18, -0.25, 0.37,
+                    -0.48, 0.29, -0.31, 0.41, -0.22, 0.36, -0.19, 0.27,
+                    -0.33, 0.44, -0.26, 0.39
+                ])
                 time_feature = np.array([43200])  # Midday
+            
             elif test_scenario == "medium":
-                # Medium purchase - normal pattern
-                mock_v_features = np.random.normal(loc=0.0, scale=0.5, size=INPUT_DIM - 2)
+                # Medium purchase - FIXED normal pattern  
+                np.random.seed(2)  # Fixed seed for consistency
+                mock_v_features = np.array([
+                    -0.68, 0.95, -0.47, 1.12, -0.35, 0.58, -0.73, 0.42,
+                    -0.21, 0.28, -0.49, 0.67, -0.54, 0.24, -0.32, 0.48,
+                    -0.61, 0.38, -0.40, 0.53, -0.29, 0.46, -0.25, 0.35,
+                    -0.42, 0.56, -0.33, 0.50
+                ])
                 time_feature = np.array([54000])  # Afternoon
+            
             elif test_scenario == "large":
-                # Large purchase - suspicious pattern (higher variance)
-                mock_v_features = np.random.normal(loc=0.0, scale=1.2, size=INPUT_DIM - 2)
-                mock_v_features[0] = 2.5  # Abnormal V1 value
-                mock_v_features[2] = -2.8  # Abnormal V3 value
-                time_feature = np.array([3600])  # Late night (suspicious)
+                # Large purchase - FIXED suspicious pattern
+                np.random.seed(3)  # Fixed seed for consistency
+                mock_v_features = np.array([
+                    3.45, -2.87, 4.12, -3.56, 2.98, -4.23, 3.78, -2.65,
+                    -3.21, 2.54, -4.05, 3.87, -2.93, 3.14, -3.67, 2.45,
+                    -4.18, 3.32, -2.76, 3.99, -3.41, 2.88, -3.54, 2.67,
+                    -4.01, 3.23, -2.89, 3.76
+                ])
+                time_feature = np.array([3600])  # Late night
+            
             else:
-                # Manual entry - use moderate variance
-                if amount_value < 100:
+                # Manual entry - use amount-based FIXED seed for consistency
+                np.random.seed(amount_seed)
+                
+                # Amount-based feature generation (consistent for same amount)
+                if amount_value < 50:
+                    # Very small amounts - very typical
+                    mock_v_features = np.random.normal(loc=0.0, scale=0.3, size=INPUT_DIM - 2)
+                elif amount_value < 100:
+                    # Small amounts - typical
                     mock_v_features = np.random.normal(loc=0.0, scale=0.4, size=INPUT_DIM - 2)
                 elif amount_value < 500:
+                    # Medium amounts - normal
                     mock_v_features = np.random.normal(loc=0.0, scale=0.6, size=INPUT_DIM - 2)
+                elif amount_value < 1000:
+                    # Large amounts - slightly suspicious
+                    mock_v_features = np.random.normal(loc=0.0, scale=1.0, size=INPUT_DIM - 2)
                 else:
-                    mock_v_features = np.random.normal(loc=0.0, scale=0.9, size=INPUT_DIM - 2)
-                time_feature = np.array([np.random.uniform(0, 86400)])
+                    # Very large amounts - very suspicious
+                    mock_v_features = np.random.normal(loc=0.0, scale=1.5, size=INPUT_DIM - 2)
+                    # Add some extreme values
+                    mock_v_features[0] = np.random.uniform(2.0, 4.0) * np.random.choice([-1, 1])
+                    mock_v_features[2] = np.random.uniform(2.0, 4.0) * np.random.choice([-1, 1])
+                
+                # Time based on amount (larger amounts at unusual times)
+                if amount_value > 1000:
+                    time_feature = np.array([np.random.uniform(0, 10800)])  # Late night/early morning
+                else:
+                    time_feature = np.array([np.random.uniform(28800, 72000)])  # Business hours
             
             # Amount feature
             amount_feature = np.array([amount_value])
