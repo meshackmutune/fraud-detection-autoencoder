@@ -95,7 +95,16 @@ def load_assets_and_set_state():
             if model and scaler and threshold:
                 st.session_state.model = model
                 st.session_state.scaler = scaler
-                st.session_state.threshold = threshold
+                
+                # CRITICAL FIX: If threshold is unreasonably high, use a sensible default
+                if threshold > 0.5:
+                    st.warning(f"⚠️ Loaded threshold ({threshold:.4f}) is unreasonably high. Using default: 0.08")
+                    st.session_state.threshold = 0.08  # Reasonable default
+                    st.session_state.original_threshold = threshold  # Keep original for reference
+                else:
+                    st.session_state.threshold = threshold
+                    st.session_state.original_threshold = threshold
+                
                 st.session_state.model_loaded = True
                 st.success("AI Model and assets loaded.")
             else:
@@ -415,32 +424,40 @@ def customer_portal():
         st.subheader("Simulate a Transaction")
         
         # Add threshold adjustment option
-        with st.expander("⚙️ Advanced Settings"):
+        with st.expander("⚙️ Advanced Settings", expanded=True):
             st.write("**Fraud Detection Sensitivity**")
             
-            # Show current threshold from config
-            original_threshold = st.session_state.threshold if st.session_state.threshold else 0.1
-            st.warning(f"⚠️ Current threshold from config.json: {original_threshold:.4f}")
+            # Show current threshold
+            current_threshold = st.session_state.threshold if st.session_state.threshold else 0.08
             
-            if original_threshold > 0.5:
-                st.error("🚨 Your threshold is EXTREMELY HIGH! This will cause almost all transactions to be marked as legitimate.")
-                st.info("💡 Recommended: Use the override below to set a more reasonable threshold (0.01 - 0.15)")
+            if hasattr(st.session_state, 'original_threshold') and st.session_state.original_threshold > 0.5:
+                st.error(f"🚨 Original threshold from config.json: {st.session_state.original_threshold:.4f} (TOO HIGH!)")
+                st.success(f"✅ Auto-corrected to: {current_threshold:.4f}")
             
-            use_custom_threshold = st.checkbox("Override default threshold", value=True)  # Default to True
-            if use_custom_threshold:
-                custom_threshold = st.slider(
-                    "Custom Threshold (higher = less sensitive)", 
-                    min_value=0.0, 
-                    max_value=0.5, 
-                    value=0.05,  # Start with a reasonable default
-                    step=0.001,
-                    format="%.4f",
-                    help="Increase to reduce false positives, decrease to catch more fraud. Typical range: 0.01-0.15"
-                )
+            st.info(f"💡 **Current threshold: {current_threshold:.4f}**")
+            st.write("Adjust below if needed:")
+            
+            custom_threshold = st.slider(
+                "Detection Threshold", 
+                min_value=0.001, 
+                max_value=0.300, 
+                value=float(current_threshold),
+                step=0.001,
+                format="%.3f",
+                help="Lower = more sensitive (catches more fraud, more false positives)\nHigher = less sensitive (fewer false positives, may miss fraud)\n\nRecommended range: 0.05 - 0.15"
+            )
+            
+            if custom_threshold != current_threshold:
                 st.session_state.threshold = custom_threshold
-                st.success(f"✅ Using custom threshold: {custom_threshold:.4f}")
+                st.success(f"✅ Threshold updated to: {custom_threshold:.3f}")
+            
+            # Show guidance
+            if custom_threshold < 0.05:
+                st.warning("⚠️ Very sensitive - expect many false positives")
+            elif custom_threshold > 0.15:
+                st.warning("⚠️ Less sensitive - may miss some fraud")
             else:
-                st.warning(f"Using original threshold: {original_threshold:.4f}")
+                st.info("✅ Balanced sensitivity")
         
         # Add pre-defined test scenarios
         st.markdown("---")
