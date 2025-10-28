@@ -20,7 +20,6 @@ torch.manual_seed(RANDOM_SEED)
 
 # --- 1. DATA LOADING AND PREPROCESSING ---
 print("1. Loading and Preprocessing Data...")
-# NOTE: Ensure 'creditcard.csv' is accessible by the script.
 try:
     df = pd.read_csv('creditcard.csv')
 except FileNotFoundError:
@@ -41,10 +40,13 @@ X_train_normal, X_temp = train_test_split(
     random_state=RANDOM_SEED
 )
 
-# Create Test Set (imbalanced)
-X_test_normal, _ = train_test_split(X_temp, test_size=0.5, random_state=RANDOM_SEED) 
-X_test = pd.concat([X_test_normal, fraud_df.drop('Class', axis=1)]).sample(frac=1, random_state=RANDOM_SEED)
-y_test = pd.concat([pd.Series([0]*len(X_test_normal)), pd.Series([1]*len(fraud_df))]).sample(frac=1, random_state=RANDOM_SEED).values
+# Create Test Set - SEPARATE normal and fraud for proper threshold calculation
+X_test_normal, X_val_normal = train_test_split(X_temp, test_size=0.5, random_state=RANDOM_SEED)
+X_test_fraud = fraud_df.drop('Class', axis=1)
+
+# Combined test set for evaluation
+X_test = pd.concat([X_test_normal, X_test_fraud]).sample(frac=1, random_state=RANDOM_SEED)
+y_test = pd.concat([pd.Series([0]*len(X_test_normal)), pd.Series([1]*len(X_test_fraud))]).sample(frac=1, random_state=RANDOM_SEED).values
 
 # Scaling: Fit ONLY on the normal training data
 scaler = StandardScaler()
@@ -53,10 +55,12 @@ scaler.fit(X_train_normal)
 # Apply Standardization
 X_train_scaled = scaler.transform(X_train_normal)
 X_test_scaled = scaler.transform(X_test)
+X_test_normal_scaled = scaler.transform(X_test_normal)  # CRITICAL: Separate normal test data
 
 # Convert to PyTorch Tensors
 X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32).to(DEVICE)
 X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32).to(DEVICE)
+X_test_normal_tensor = torch.tensor(X_test_normal_scaled, dtype=torch.float32).to(DEVICE)  # CRITICAL
 
 # Create DataLoader
 train_dataset = TensorDataset(X_train_tensor, X_train_tensor)
@@ -108,26 +112,48 @@ print("Training complete.")
 
 
 # --- 4. EVALUATION AND THRESHOLD DETERMINATION ---
+print("\n3. Calculating Threshold on NORMAL transactions only...")
 model.eval()
+
+# CRITICAL FIX: Calculate threshold on NORMAL test data ONLY
+with torch.no_grad():
+    reconstructions_normal = model(X_test_normal_tensor)
+    mse_error_normal = torch.mean((reconstructions_normal - X_test_normal_tensor) ** 2, dim=1).cpu().numpy()
+
+# Determine Anomaly Threshold - 95th percentile of NORMAL transaction errors
+threshold = np.percentile(mse_error_normal, 95)
+
+print(f"\nThreshold Statistics (Normal Transactions):")
+print(f"  Mean Error: {np.mean(mse_error_normal):.6f}")
+print(f"  Median Error: {np.median(mse_error_normal):.6f}")
+print(f"  Std Dev: {np.std(mse_error_normal):.6f}")
+print(f"  95th Percentile (THRESHOLD): {threshold:.6f}")
+
+# Now evaluate on the full test set (normal + fraud)
 with torch.no_grad():
     reconstructions = model(X_test_tensor)
     mse_error = torch.mean((reconstructions - X_test_tensor) ** 2, dim=1).cpu().numpy()
 
-# Determine Anomaly Threshold (e.g., 95th percentile of errors)
-threshold = np.percentile(mse_error, 95) 
 y_pred = (mse_error > threshold).astype(int)
 
-print(f"\n3. Evaluation Metrics (Threshold: {threshold:.4f}):")
-print("-" * 40)
+print(f"\n4. Evaluation Metrics (Threshold: {threshold:.6f}):")
+print("-" * 60)
 print(classification_report(y_test, y_pred, target_names=['Normal (0)', 'Fraud (1)']))
 
 precision, recall, _ = precision_recall_curve(y_test, mse_error)
 auc_pr = auc(recall, precision)
 print(f"Area Under the Precision-Recall Curve (AUC-PR): {auc_pr:.4f}")
 
+# Additional statistics
+fraud_indices = y_test == 1
+normal_indices = y_test == 0
+print(f"\nReconstruction Error Statistics:")
+print(f"  Normal transactions - Mean: {np.mean(mse_error[normal_indices]):.6f}, Max: {np.max(mse_error[normal_indices]):.6f}")
+print(f"  Fraud transactions  - Mean: {np.mean(mse_error[fraud_indices]):.6f}, Max: {np.max(mse_error[fraud_indices]):.6f}")
+
 
 # --- 5. ARTIFACT SAVING (CRUCIAL FOR STREAMLIT DEPLOYMENT) ---
-print("\n--- 4. Saving Deployment Artifacts ---")
+print("\n--- 5. Saving Deployment Artifacts ---")
 
 # A. Save Model Weights
 torch.save(model.state_dict(), 'fraud_autoencoder_model.pth')
@@ -138,13 +164,22 @@ with open('scaler_params.pkl', 'wb') as f:
     pickle.dump(scaler, f)
 print("✅ 2/3 StandardScaler saved to 'scaler_params.pkl'")
 
-# C. Save Anomaly Threshold
+# C. Save Anomaly Threshold with metadata
 threshold_float = float(threshold)
-config_data = {'anomaly_threshold': threshold_float}
+config_data = {
+    'anomaly_threshold': threshold_float,
+    'threshold_percentile': 95,
+    'normal_mean_error': float(np.mean(mse_error_normal)),
+    'normal_std_error': float(np.std(mse_error_normal)),
+    'fraud_detection_rate': float(np.sum(mse_error[fraud_indices] > threshold) / len(mse_error[fraud_indices]) * 100)
+}
 
 with open('config.json', 'w') as f:
     json.dump(config_data, f, indent=4)
 print("✅ 3/3 Anomaly Threshold saved to 'config.json'")
 
-print("------------------------------------")
-print("\nDeployment setup complete. You can now run 'streamlit run app.py'")
+print("-" * 60)
+print(f"\n🎉 Deployment setup complete!")
+print(f"   Threshold: {threshold_float:.6f}")
+print(f"   This should give you a working fraud detection model.")
+print("\nYou can now run 'streamlit run app.py'")
