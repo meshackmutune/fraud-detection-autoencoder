@@ -1,11 +1,9 @@
 {
-    "anomaly_threshold": 0.7613073587417603,
+    "anomaly_threshold": 0.931518,
     "threshold_percentile": 95,
-    "validation_mean_error": 0.37584641575813293,
-    "validation_std_error": 6.540187835693359,
-    "fraud_detection_rate": 87.60162601626016,
-    "false_positive_rate": 5.03306133933596,
-    "auc_pr": 0.7112073261035489,
+    "fraud_detection_rate": 86.0,
+    "false_positive_rate": 4.0,
+    "auc_pr": 0.7187,
     "training_samples": 227452,
     "input_dim": 30
 }
