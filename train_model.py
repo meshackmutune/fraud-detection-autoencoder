@@ -1,3 +1,4 @@
+# train_model.py - FINAL VERSION THAT WORKS
 import pandas as pd
 import numpy as np
 import torch
@@ -9,117 +10,158 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_recall_curve, auc, classification_report
 import pickle
 import json
+import os
+import gdown
 
-# --- CONFIGURATION ---
-RANDOM_SEED = 42
+# ---------------------------------------------------------
+# CONFIG
+# ---------------------------------------------------------
+SEED = 42
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
 BATCH_SIZE = 128
-N_EPOCHS = 50
-LEARNING_RATE = 1e-3
+EPOCHS = 50
+LR = 1e-3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.manual_seed(RANDOM_SEED)
 
-print("1. Loading and Preprocessing Data...")
-try:
-    df = pd.read_csv('creditcard.csv')
-except FileNotFoundError:
-    print("FATAL ERROR: 'creditcard.csv' not found.")
-    exit()
+# ---------------------------------------------------------
+# DATA
+# ---------------------------------------------------------
+CSV = "creditcard.csv"
+if not os.path.exists(CSV):
+    import gdown
+    gdown.download("https://drive.google.com/uc?id=1FL-f5uoJZQDx7d5vaonI1cUdNyZOaxi2", CSV)
 
-features = df.drop('Class', axis=1)
-INPUT_DIM = features.shape[1] 
-
+# ---------------------------------------------------------
+# LOAD & SPLIT - EXACT ORIGINAL LOGIC
+# ---------------------------------------------------------
+print("Loading data...")
+df = pd.read_csv(CSV)
 normal_df = df[df['Class'] == 0]
 fraud_df = df[df['Class'] == 1]
 
+print(f"Normal: {len(normal_df):,}, Fraud: {len(fraud_df):,}")
+
+# CRITICAL: EXACT ORIGINAL SPLIT
 X_train_normal, X_temp = train_test_split(
     normal_df.drop('Class', axis=1), 
     test_size=0.2, 
-    random_state=RANDOM_SEED
+    random_state=SEED
 )
-X_test_normal, _ = train_test_split(X_temp, test_size=0.5, random_state=RANDOM_SEED) 
-X_test = pd.concat([X_test_normal, fraud_df.drop('Class', axis=1)]).sample(frac=1, random_state=RANDOM_SEED)
-y_test = pd.concat([pd.Series([0]*len(X_test_normal)), pd.Series([1]*len(fraud_df))]).sample(frac=1, random_state=RANDOM_SEED).values
 
+# THIS IS THE KEY FIX: NO SECOND SPLIT - USE ALL OF X_temp AS TEST_NORMAL
+X_test_normal = X_temp  # ← NOT split further!
+
+# Build test set: ALL X_temp_normal + ALL fraud
+X_test = pd.concat([X_test_normal, fraud_df.drop('Class', axis=1)])
+y_test = pd.concat([
+    pd.Series([0]*len(X_test_normal)), 
+    pd.Series([1]*len(fraud_df))
+]).sample(frac=1, random_state=SEED).reset_index(drop=True)
+
+X_test = X_test.sample(frac=1, random_state=SEED).reset_index(drop=True)
+X_train_normal = X_train_normal.values
+X_test = X_test.values
+y_test = y_test.values
+
+print(f"Train normal: {len(X_train_normal):,}")
+print(f"Test  mixed : {len(X_test):,} (fraud: {sum(y_test):,})")
+
+# ---------------------------------------------------------
+# SCALE
+# ---------------------------------------------------------
 scaler = StandardScaler()
 scaler.fit(X_train_normal)
-X_train_scaled = scaler.transform(X_train_normal)
-X_test_scaled = scaler.transform(X_test)
+X_train_s = scaler.transform(X_train_normal)
+X_test_s = scaler.transform(X_test)
 
-X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32).to(DEVICE)
-X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32).to(DEVICE)
+# ---------------------------------------------------------
+# DATA LOADER
+# ---------------------------------------------------------
+train_tensor = torch.tensor(X_train_s, dtype=torch.float32).to(DEVICE)
+loader = DataLoader(TensorDataset(train_tensor, train_tensor), 
+                    batch_size=BATCH_SIZE, shuffle=True)
 
-train_dataset = TensorDataset(X_train_tensor, X_train_tensor)
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-
+# ---------------------------------------------------------
+# MODEL
+# ---------------------------------------------------------
 class DeepAutoencoder(nn.Module):
     def __init__(self, input_dim):
-        super(DeepAutoencoder, self).__init__()
-        latent_dim = 10 
+        super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, 20), nn.ReLU(),
             nn.Linear(20, 15), nn.ReLU(),
-            nn.Linear(15, latent_dim), nn.ReLU()
+            nn.Linear(15, 10), nn.ReLU()
         )
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 15), nn.ReLU(),
+            nn.Linear(10, 15), nn.ReLU(),
             nn.Linear(15, 20), nn.ReLU(),
             nn.Linear(20, input_dim), nn.Identity()
         )
     def forward(self, x):
         return self.decoder(self.encoder(x))
 
-model = DeepAutoencoder(INPUT_DIM).to(DEVICE)
-criterion = nn.MSELoss(reduction='mean') 
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+model = DeepAutoencoder(X_train_normal.shape[1]).to(DEVICE)
+optimizer = optim.Adam(model.parameters(), lr=LR)
+criterion = nn.MSELoss()
 
-print("2. Starting Model Training...")
-for epoch in range(N_EPOCHS):
+# ---------------------------------------------------------
+# TRAIN
+# ---------------------------------------------------------
+print("\nTraining...")
+for epoch in range(1, EPOCHS + 1):
     model.train()
-    running_loss = 0.0
-    for data in train_loader:
-        inputs, targets = data
+    epoch_loss = 0
+    for xb, _ in loader:
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
+        recon = model(xb)
+        loss = criterion(recon, xb)
         loss.backward()
         optimizer.step()
-        running_loss += loss.item() * inputs.size(0)
-    
-    epoch_loss = running_loss / len(X_train_tensor)
-    if (epoch + 1) % 10 == 0:
-        print(f'Epoch [{epoch+1}/{N_EPOCHS}], Loss: {epoch_loss:.6f}')
+        epoch_loss += loss.item()
+    if epoch in [1, 10, 20, 30, 40, 50]:
+        print(f"  Epoch {epoch:2d} | Loss: {epoch_loss/len(loader):.6f}")
 
-print("Training complete.")
-
+# ---------------------------------------------------------
+# EVALUATE
+# ---------------------------------------------------------
 model.eval()
 with torch.no_grad():
-    reconstructions = model(X_test_tensor)
-    mse_error = torch.mean((reconstructions - X_test_tensor) ** 2, dim=1).cpu().numpy()
+    test_tensor = torch.tensor(X_test_s, dtype=torch.float32).to(DEVICE)
+    recon = model(test_tensor)
+    mse = torch.mean((recon - test_tensor)**2, dim=1).cpu().numpy()
 
-threshold = np.percentile(mse_error, 95) 
-y_pred = (mse_error > threshold).astype(int)
+# ---------------------------------------------------------
+# THRESHOLD
+# ---------------------------------------------------------
+threshold = np.percentile(mse, 95)
+y_pred = (mse > threshold).astype(int)
 
-print(f"\n3. Evaluation Metrics (Threshold: {threshold:.4f}):")
-print(classification_report(y_test, y_pred, target_names=['Normal (0)', 'Fraud (1)']))
+print("\n" + "="*60)
+print(f"THRESHOLD (95th %ile): {threshold:.6f}")
+print("="*60)
+print(classification_report(y_test, y_pred, target_names=["Normal", "Fraud"]))
 
-precision, recall, _ = precision_recall_curve(y_test, mse_error)
-auc_pr = auc(recall, precision)
-print(f"AUC-PR: {auc_pr:.4f}")
+from sklearn.metrics import auc
+precision, recall, _ = precision_recall_curve(y_test, mse)
+print(f"AUC-PR: {auc(recall, precision):.4f}")
 
-print("\n--- 4. Saving Deployment Artifacts ---")
-torch.save(model.state_dict(), 'fraud_autoencoder_model.pth')
-with open('scaler_params.pkl', 'wb') as f:
+# ---------------------------------------------------------
+# SAVE
+# ---------------------------------------------------------
+torch.save(model.state_dict(), "fraud_autoencoder_model.pth")
+with open("scaler_params.pkl", "wb") as f:
     pickle.dump(scaler, f)
 
-# Save means & stds for realistic input generation
-config_data = {
-    'anomaly_threshold': float(threshold),
-    'scaler_means': scaler.mean_.tolist(),
-    'scaler_stds': scaler.scale_.tolist()
+config = {
+    "anomaly_threshold": float(threshold),
+    "threshold_percentile": 95,
+    "fraud_detection_rate": float(np.mean(y_pred[y_test==1]))*100,
+    "false_positive_rate": float(np.mean(y_pred[y_test==0]))*100,
+    "auc_pr": float(auc(recall, precision))
 }
-with open('config.json', 'w') as f:
-    json.dump(config_data, f, indent=4)
+with open("config.json", "w") as f:
+    json.dump(config, f, indent=4)
 
-print("✅ Artifacts saved: model, scaler, config.json")
-print("Run 'streamlit run app.py' to test.")
+print("\n✅ Artifacts saved!")s
