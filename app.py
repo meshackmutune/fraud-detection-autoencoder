@@ -1,4 +1,4 @@
-# app.py - COLORFUL + VISIBLE + REAL TRAFFIC LIGHT (NO LAST 5)
+# app.py - COLORFUL + VISIBLE + THRESHOLD GRAPH FOR CUSTOMER
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -66,7 +66,7 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(16, 185, 129, 0.7);
     }
 
-    /* TRAFFIC LIGHT STYLES */
+    /* TRAFFIC LIGHT */
     .traffic-light {
         width: 100px; height: 100px;
         border-radius: 50%;
@@ -169,7 +169,9 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown(f"""
-<div style="background: rgba(255,255,255,0.2); padding...
+<div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px;">
+    <p style="color: white; margin: 0; font-weight: 600;">User: {st.session_state.uid[:8]}...</p>
+</div>
 """, unsafe_allow_html=True)
 
 if st.sidebar.button("Logout"): logout(); st.rerun()
@@ -180,7 +182,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: REAL TRAFFIC LIGHT + RISK BAR ONLY
+# 5. CUSTOMER: TRAFFIC LIGHT + RISK BAR + THRESHOLD GRAPH
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -204,7 +206,7 @@ if page == "Check Transaction":
             status = "BLOCKED" if fraud else "SAFE"
             light_class = "red-light" if fraud else "green-light"
 
-            # TRAFFIC LIGHT INDICATOR
+            # TRAFFIC LIGHT
             st.markdown(f"""
             <div class="glass-card">
                 <div class="traffic-light {light_class}"></div>
@@ -231,6 +233,40 @@ if page == "Check Transaction":
                 font_color="white"
             )
             st.plotly_chart(fig, use_container_width=True)
+
+            # NEW: THRESHOLD GRAPH
+            st.markdown("### How the AI Decides")
+            # Simulate normal distribution of errors
+            x = np.linspace(0, 2, 200)
+            normal_errors = np.exp(-((x - 0.3)**2) / (2 * 0.1**2)) / np.sqrt(2 * np.pi * 0.1**2)
+            fraud_errors = np.exp(-((x - 1.2)**2) / (2 * 0.3**2)) / np.sqrt(2 * np.pi * 0.3**2) * 0.3
+
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=x, y=normal_errors, fill='tozeroy', fillcolor='rgba(16,185,129,0.3)',
+                                     line_color='rgba(0,0,0,0)', name='Normal'))
+            fig2.add_trace(go.Scatter(x=x, y=fraud_errors, fill='tozeroy', fillcolor='rgba(239,68,68,0.3)',
+                                     line_color='rgba(0,0,0,0)', name='Fraud'))
+
+            # Threshold line
+            fig2.add_vline(x=THRESHOLD, line_dash="dash", line_color="#F59E0B",
+                           annotation_text=f"Threshold: {THRESHOLD:.2f}", annotation_position="top")
+
+            # Your transaction
+            your_err = st.session_state.last_err
+            fig2.add_scatter(x=[your_err], y=[0], mode='markers',
+                             marker=dict(size=16, color='#EF4444' if fraud else '#10B981', symbol='star'),
+                             name="Your Transaction")
+
+            fig2.update_layout(
+                title="AI Decision Engine",
+                xaxis_title="Reconstruction Error",
+                yaxis_title="Density",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color="white",
+                legend=dict(y=0.99, x=0.01, bgcolor='rgba(255,255,255,0.1)')
+            )
+            st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
 # 6. ADMIN: CARDS + PIE
