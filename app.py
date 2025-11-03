@@ -1,4 +1,4 @@
-# app.py - EASY VISUALS (NO CITY MAP)
+# app.py - COLORFUL & EASY (NO MAP, NO TOP 5)
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -9,23 +9,97 @@ from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 
 # ---------------------------------------------------------
-# 0. PAGE CONFIG + THEME
+# 0. PAGE CONFIG + VIBRANT THEME
 # ---------------------------------------------------------
 st.set_page_config(page_title="Secure Bank", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
-    :root { --primary-green: #10B981; --dark-green: #047857; }
-    .stButton>button { background: var(--primary-green) !important; color: white !important; }
-    .stButton>button:hover { background: var(--dark-green) !important; }
-    .big-light { font-size: 120px; text-align: center; line-height: 1; }
-    .big-number { font-size: 48px; font-weight: bold; text-align: center; }
-    .label { font-size: 18px; text-align: center; color: #555; }
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+    * { font-family: 'Poppins', sans-serif; }
+
+    /* Rainbow Gradient Background */
+    .stApp {
+        background: linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #FECA57);
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
+    }
+    @keyframes gradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* Glass Cards */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(15px);
+        border-radius: 20px;
+        padding: 25px;
+        margin: 15px 0;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        text-align: center;
+        transition: transform 0.3s;
+    }
+    .glass-card:hover {
+        transform: translateY(-8px);
+    }
+
+    /* Rainbow Buttons */
+    .stButton > button {
+        background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1);
+        background-size: 300%;
+        color: white !important;
+        border: none !important;
+        border-radius: 16px !important;
+        padding: 14px 28px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        animation: rainbow 8s ease infinite;
+    }
+    .stButton > button:hover {
+        animation: rainbow 1.5s ease infinite;
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.6);
+    }
+    @keyframes rainbow {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* Glowing Traffic Light */
+    .light {
+        font-size: 140px;
+        line-height: 1;
+        text-shadow: 0 0 30px currentColor;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
+    }
+
+    /* Big Numbers */
+    .big-number {
+        font-size: 56px;
+        font-weight: 700;
+        margin: 0;
+        background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .label { font-size: 18px; color: white; opacity: 0.9; margin-top: 8px; }
+
+    /* Table */
+    .stDataFrame { border-radius: 16px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 1. FIREBASE & MODEL (FIXED)
+# 1. FIREBASE & MODEL
 # ---------------------------------------------------------
 def init_firebase():
     if not firebase_admin._apps:
@@ -48,7 +122,7 @@ def login(email, pwd):
         user = auth.get_user_by_email(email)
         st.session_state.update(uid=user.uid, logged_in=True,
                                 is_admin=(email == "admin@securebank.com"))
-        st.success("Logged in!")
+        st.balloons()
     except:
         st.error("Login failed.")
 
@@ -56,7 +130,7 @@ def register(email, pwd):
     try:
         user = auth.create_user(email=email, password=pwd)
         st.session_state.update(uid=user.uid, logged_in=True, is_admin=False)
-        st.success("Registered!")
+        st.success("Welcome!")
     except:
         st.error("Register failed.")
 
@@ -66,41 +140,48 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE
+# 3. LOGIN PAGE – COLORFUL
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
-    with st.sidebar:
-        st.markdown("""
-        <div style="text-align:center; padding:15px;">
-            <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
-            <h2 style="color:#10B981; margin:8px 0 0;">Secure Bank</h2>
-            <p style="color:#10B981; font-size:0.95rem;">Fraud Detection Portal</p>
-            <hr style="border-top:2px solid #10B981;">
-        </div>
-        """, unsafe_allow_html=True)
-        email = st.text_input("Email", key="email")
-        pwd = st.text_input("Password", type="password", key="pwd")
-        c1, c2 = st.columns(2)
-        if c1.button("Login"): login(email, pwd); st.rerun()
-        if c2.button("Register"): register(email, pwd); st.rerun()
-
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.image("https://img.icons8.com/fluency/256/bank-building.png", width=200)
+        st.image("https://img.icons8.com/fluency/256/bank-building.png", width=220)
     with col2:
         st.markdown("""
-        <h1 style='color:#10B981;'>Welcome to Secure Bank</h1>
-        <p style='font-size:1.2rem; color:#047857;'>
-            <b>AI protects your money 24/7</b><br>
-            <i>86% fraud caught • Only 4% false alerts</i>
+        <h1 style='color: white; text-shadow: 0 4px 15px rgba(0,0,0,0.4);'>
+            Secure Bank
+        </h1>
+        <p style='color: white; font-size: 1.4rem; opacity: 0.95;'>
+            <b>AI-Powered Fraud Shield</b>
+        </p>
+        <p style='color: white; opacity: 0.8;'>
+            86% fraud caught • Only 4% false alerts
         </p>
         """, unsafe_allow_html=True)
+
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px;">
+            <img src="https://img.icons8.com/fluency/96/bank-building.png" width="80">
+            <h3 style="color: white; margin: 12px 0 0;">Login</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        email = st.text_input("Email", placeholder="you@securebank.com")
+        pwd = st.text_input("Password", type="password")
+        if st.button("Login"): login(email, pwd); st.rerun()
+        if st.button("Register"): register(email, pwd); st.rerun()
     st.stop()
 
 # ---------------------------------------------------------
 # 4. LOGGED IN
 # ---------------------------------------------------------
-st.sidebar.success(f"User: {st.session_state.uid[:8]}...")
+st.sidebar.markdown(f"""
+<div style="background: rgba(255,255,255,0.2); padding: 18px; border-radius: 16px; text-align: center;">
+    <p style="color: white; margin: 0; font-weight: 600;">
+        User: {st.session_state.uid[:8]}...
+    </p>
+</div>
+""", unsafe_allow_html=True)
 if st.sidebar.button("Logout"): logout(); st.rerun()
 
 pages = ["Check Transaction"]
@@ -109,20 +190,20 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: TRAFFIC LIGHT + BAR
+# 5. CUSTOMER: RAINBOW TRAFFIC LIGHT
 # ---------------------------------------------------------
 if page == "Check Transaction":
-    st.title("Check Your Transaction")
+    st.markdown("<h1 style='color: white; text-align: center; text-shadow: 0 4px 15px rgba(0,0,0,0.4);'>Check Your Transaction</h1>", unsafe_allow_html=True)
 
     colA, colB = st.columns([1, 3])
     with colA:
-        amt = st.text_input("Amount (USD)", "100.00")
+        amt = st.text_input("Amount (USD)", "100.00", help="Enter any amount")
         try: amount = float(amt)
         except: amount = 0.0; st.warning("Invalid")
 
-        if st.button("Verify", type="primary", use_container_width=True):
+        if st.button("Verify Now", use_container_width=True):
             vec = np.zeros(INPUT_DIM); vec[29] = amount
-            with st.spinner("Checking..."):
+            with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
             st.session_state.last_err = err
             st.session_state.last_fraud = fraud
@@ -131,104 +212,97 @@ if page == "Check Transaction":
         if 'last_err' in st.session_state:
             fraud = st.session_state.last_fraud
 
-            # 1. TRAFFIC LIGHT
-            light = "Green Light" if not fraud else "Red Light"
-            color = "#10B981" if not fraud else "#EF4444"
+            # TRAFFIC LIGHT
+            light_color = "#4ECDC4" if not fraud else "#FF6B6B"
+            status = "SAFE" if not fraud else "BLOCKED"
             st.markdown(f"""
-            <div class="big-light" style="color: {color};">
-                ●
+            <div class="glass-card">
+                <div class="light" style="color: {light_color};">
+                    Circle
+                </div>
+                <p class="big-number" style="background: linear-gradient(45deg, #FF6B6B, #4ECDC4); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    {status}
+                </p>
+                <p class="label" style="color: white;">Transaction is <b>{status}</b></p>
             </div>
-            <p class="big-number" style="color: {color};">
-                {light}
-            </p>
-            <p class="label">Transaction is <b>{'SAFE' if not fraud else 'BLOCKED'}</b></p>
             """, unsafe_allow_html=True)
 
-            # 2. SIMPLE BAR: Your Risk vs Average
+            # RAINBOW BAR
             your_risk = min(100, int(err * 100))
             avg_risk = 15
             fig = go.Figure(go.Bar(
-                x=['Your Risk', 'Average Risk'],
+                x=['Your Risk', 'Average'],
                 y=[your_risk, avg_risk],
-                marker_color=[color, '#94A3B8'],
+                marker_color=['#FF6B6B' if fraud else '#4ECDC4', '#A0A0A0'],
                 text=[f"{your_risk}%", f"{avg_risk}%"],
                 textposition='outside'
             ))
-            fig.update_layout(title="How Risky Is This?", yaxis_title="Risk Level (%)")
+            fig.update_layout(
+                title="Your Risk Level",
+                yaxis_title="Risk %",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
             st.plotly_chart(fig, use_container_width=True)
 
-    # 3. RECENT ACTIVITY (SIMPLE TABLE)
+    # RECENT ACTIVITY
     st.markdown("### Your Last 5 Transactions")
     history = pd.DataFrame({
         "Amount": [120, 450, 89, 2000, 75],
         "Status": ["Approved", "Approved", "Approved", "Blocked", "Approved"],
         "Risk": [12, 18, 10, 88, 15]
     })
-    history["Status"] = history["Risk"].apply(lambda x: "Blocked" if x > 70 else "Approved")
     st.dataframe(history.style.applymap(
-        lambda x: f"background-color: {'#FEE2E2' if x=='Blocked' else '#DCFCE7'}",
+        lambda x: f"background: {'linear-gradient(45deg, #FF6B6B, #FF8E8E)' if x=='Blocked' else 'linear-gradient(45deg, #4ECDC4, #7ED9D2)'}",
         subset=["Status"]
-    ), use_container_width=True)
+    ).set_properties(**{
+        'color': 'white', 'font-weight': 'bold', 'text-align': 'center'
+    }), use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN: PIE + CARDS + TOP 5 (NO MAP)
+# 6. ADMIN: RAINBOW CARDS + PIE
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
-    st.title("Fraud Control Center")
+    st.markdown("<h1 style='color: white; text-align: center; text-shadow: 0 4px 15px rgba(0,0,0,0.4);'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # Mock Summary
     total = 12500
     fraud = 480
     false = 420
     normal = total - fraud - false
 
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"""
-        <div style="text-align:center; padding:20px; background:#DCFCE7; border-radius:12px;">
-            <p class="big-number" style="color:#10B981;">{fraud}</p>
-            <p class="label">Fraud Caught</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""
-        <div style="text-align:center; padding:20px; background:#FEE2E2; border-radius:12px;">
-            <p class="big-number" style="color:#EF4444;">{false}</p>
-            <p class="label">False Alerts</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"""
-        <div style="text-align:center; padding:20px; background:#E0E7FF; border-radius:12px;">
-            <p class="big-number" style="color:#6366F1;">{total:,}</p>
-            <p class="label">Total Checked</p>
-        </div>
-        """, unsafe_allow_html=True)
+    cards = [
+        ("Fraud Caught", fraud, "#FF6B6B"),
+        ("False Alerts", false, "#FECA57"),
+        ("Total Checked", total, "#45B7D1")
+    ]
+    for col, (label, value, color) in zip([col1, col2, col3], cards):
+        with col:
+            st.markdown(f"""
+            <div class="glass-card">
+                <p class="big-number" style="color: {color};">{value:,}</p>
+                <p class="label" style="color: white;">{label}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    colA, colB = st.columns(2)
-    with colA:
-        # PIE CHART
-        fig = px.pie(
-            values=[normal, fraud, false],
-            names=['Safe', 'Fraud', 'False'],
-            color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'],
-            hole=0.4,
-            title="All Transactions"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    # RAINBOW PIE
+    st.markdown("### Transaction Breakdown")
+    fig = px.pie(
+        values=[normal, fraud, false],
+        names=['Safe', 'Fraud', 'False'],
+        hole=0.5,
+        color_discrete_sequence=['#4ECDC4', '#FF6B6B', '#FECA57']
+    )
+    fig.update_traces(textinfo='percent+label', textfont_size=16)
+    st.plotly_chart(fig, use_container_width=True)
 
-    with colB:
-        # TOP 5 RISKY CITIES (MOCK) – BAR CHART
-        cities = pd.DataFrame({
-            "City": ["Mumbai", "Delhi", "Lagos", "São Paulo", "Jakarta"],
-            "Fraud Count": [95, 82, 78, 65, 60]
-        })
-        fig = px.bar(cities, x="City", y="Fraud Count",
-                     color="Fraud Count", color_continuous_scale="Reds",
-                     title="Top 5 Risky Cities")
-        st.plotly_chart(fig, use_container_width=True)
-
-    # THRESHOLD TUNER
+    # RAINBOW SLIDER
     st.markdown("### AI Sensitivity")
-    new_thr = st.slider("Risk Threshold", 0.5, 1.5, THRESHOLD, 0.05)
-    st.write(f"Current: **{THRESHOLD:.2f}** → New: **{new_thr:.2f}**")
+    new_thr = st.slider("Risk Threshold", 0.5, 1.5, THRESHOLD, 0.05,
+                        help="Lower = catch more fraud")
+    st.markdown(f"""
+    <div style="text-align: center; color: white; font-size: 1.2rem;">
+        Current: <b style="color: #FECA57;">{THRESHOLD:.2f}</b> → 
+        New: <b style="color: #45B7D1;">{new_thr:.2f}</b>
+    </div>
+    """, unsafe_allow_html=True)
