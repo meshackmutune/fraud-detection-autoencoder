@@ -1,4 +1,4 @@
-# app.py - CUSTOMER SAVES → ADMIN SEES INSTANTLY
+# app.py - FIXED: NO np.bool_ ERROR + CUSTOMER SAVES → ADMIN SEES
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -201,7 +201,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SAVE EVERY TRANSACTION
+# 5. CUSTOMER: SAVE EVERY TRANSACTION (FIXED np.bool_)
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -217,13 +217,13 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === SAVE FOR ALL USERS ===
+            # === FIXED: Convert np.bool_ → Python bool ===
             try:
                 db.collection("transactions").add({
                     "uid": st.session_state.uid,
-                    "amount": amount,
+                    "amount": float(amount),
                     "error": float(err),
-                    "fraud": fraud,
+                    "fraud": bool(fraud),  # ← THIS FIXES THE ERROR
                     "timestamp": firestore.SERVER_TIMESTAMP
                 })
                 st.success("Transaction saved to history!")
