@@ -1,4 +1,4 @@
-# app.py - FINAL: CLEAN "REGISTER HERE" LINK + CONFIRM PASSWORD + NO JS ERRORS
+# app.py - FINAL: "INVALID USER" MESSAGE + REGISTER LINK + CONFIRM PASSWORD
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -176,12 +176,12 @@ def register(email, pwd, confirm_pwd):
         st.error("Email already in use or invalid.")
 
 def logout():
-    for k in ["uid", "email", "logged_in", "is_admin", "show_register"]:
+    for k in ["uid", "email", "logged_in", "is_admin", "show_register", "invalid_user"]:
         st.session_state.pop(k, None)
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE - "REGISTER HERE" LINK BELOW LOGIN
+# 3. LOGIN PAGE - "INVALID USER" FOR NEW USERS
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -207,16 +207,30 @@ if not st.session_state.get("logged_in", False):
         login_email = st.text_input("Email", placeholder="you@securebank.com", key="login_email")
         login_pwd = st.text_input("Password", type="password", key="login_pwd")
 
+        # === CHECK IF EMAIL EXISTS ON LOGIN CLICK ===
         if st.button("Login", use_container_width=True):
             if not login_email or not login_pwd:
                 st.error("Please fill in both fields.")
             else:
                 try:
+                    # This will raise if user doesn't exist
                     auth.get_user_by_email(login_email)
                     login(login_email, login_pwd)
                 except:
-                    st.error("No account found.")
+                    st.session_state.invalid_user = True
+                    st.session_state.show_register = True
+                    st.error("Invalid user. Please register.")
             st.rerun()
+
+        # === SHOW "INVALID USER" MESSAGE IF FLAGGED ===
+        if st.session_state.get("invalid_user", False):
+            st.markdown("""
+            <div style="background: rgba(239,68,68,0.2); padding: 12px; border-radius: 12px; text-align: center; margin: 10px 0; border: 1px solid #EF4444;">
+                <p style="color: #FECACA; margin: 0; font-weight: 600;">
+                    Invalid user. Please register.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
         # === "REGISTER HERE" LINK BELOW LOGIN ===
         st.markdown("""
@@ -226,10 +240,9 @@ if not st.session_state.get("logged_in", False):
         </div>
         """, unsafe_allow_html=True)
 
-        # === REGISTER FORM (SHOW IF LINK CLICKED OR INVALID LOGIN) ===
-        show_register = st.query_params.get("show_register") == "1"
-        if show_register or st.session_state.get("show_register", False):
-            st.session_state.show_register = True
+        # === REGISTER FORM (SHOW IF LINK OR INVALID USER) ===
+        show_register = st.query_params.get("show_register") == "1" or st.session_state.get("show_register", False)
+        if show_register:
             st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
             st.markdown("### Create Account")
             reg_email = st.text_input("Register Email", value=login_email or "", key="reg_email")
@@ -239,11 +252,13 @@ if not st.session_state.get("logged_in", False):
             with col1:
                 if st.button("Register", use_container_width=True, type="primary"):
                     register(reg_email, reg_pwd, reg_confirm)
+                    st.session_state.pop("invalid_user", None)
                     st.query_params.clear()
                     st.rerun()
             with col2:
                 if st.button("Cancel", use_container_width=True):
                     st.session_state.show_register = False
+                    st.session_state.pop("invalid_user", None)
                     st.query_params.clear()
                     st.rerun()
 
