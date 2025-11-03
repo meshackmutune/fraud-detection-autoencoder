@@ -1,4 +1,4 @@
-# app.py - FINAL: USER-FRIENDLY LOGIN + SILENT SAVE + CLEAN UI
+# app.py - FINAL: CONFIRM PASSWORD + SMART REGISTER POPUP + SILENT SAVE
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -142,7 +142,13 @@ def login(email, pwd):
     except:
         st.error("Invalid email or password.")
 
-def register(email, pwd):
+def register(email, pwd, confirm_pwd):
+    if pwd != confirm_pwd:
+        st.error("Passwords do not match.")
+        return
+    if len(pwd) < 6:
+        st.error("Password must be at least 6 characters.")
+        return
     try:
         user = auth.create_user(email=email, password=pwd)
         st.session_state.update(
@@ -161,7 +167,7 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE - USER-FRIENDLY
+# 3. LOGIN PAGE - SMART REGISTER POPUP + CONFIRM PASSWORD
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -186,19 +192,31 @@ if not st.session_state.get("logged_in", False):
         st.markdown("### Login")
         login_email = st.text_input("Email", placeholder="you@securebank.com", key="login_email")
         login_pwd = st.text_input("Password", type="password", key="login_pwd")
+
+        show_register = False
         if st.button("Login", use_container_width=True):
-            login(login_email, login_pwd)
+            if not login_email or not login_pwd:
+                st.error("Please fill in both fields.")
+            else:
+                try:
+                    auth.get_user_by_email(login_email)
+                    login(login_email, login_pwd)
+                except:
+                    st.error("No account found.")
+                    show_register = True
             st.rerun()
 
-        # === REGISTER PROMPT ===
-        st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
-        st.markdown("### New User?")
-        st.markdown("<p style='color: #C7D2FE; text-align:center;'>Not registered yet?</p>", unsafe_allow_html=True)
-        reg_email = st.text_input("Register Email", placeholder="your@email.com", key="reg_email")
-        reg_pwd = st.text_input("Register Password", type="password", key="reg_pwd")
-        if st.button("Register Now", use_container_width=True):
-            register(reg_email, reg_pwd)
-            st.rerun()
+        # === SMART REGISTER POPUP WITH CONFIRM PASSWORD ===
+        if show_register or (login_email and "@" in login_email and not login_pwd):
+            st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
+            st.markdown("### New User?")
+            st.markdown("<p style='color: #C7D2FE; text-align:center;'>No account? Register instantly!</p>", unsafe_allow_html=True)
+            reg_email = st.text_input("Register Email", value=login_email, key="reg_email_popup")
+            reg_pwd = st.text_input("Password", type="password", key="reg_pwd_popup")
+            reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm_popup")
+            if st.button("Register Now", use_container_width=True, type="primary"):
+                register(reg_email, reg_pwd, reg_confirm)
+                st.rerun()
 
     st.stop()
 
@@ -212,7 +230,6 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# === CLEAR: LOGGED IN AS ===
 st.sidebar.markdown(f"""
 <div style="background: rgba(16, 185, 129, 0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px; border: 1px solid #10B981;">
     <p style="color: white; margin: 0; font-weight: 600; font-size: 1.1rem;">
@@ -248,7 +265,7 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === SILENT SAVE - NO st.success() ===
+            # === SILENT SAVE ===
             try:
                 db.collection("transactions").add({
                     "uid": st.session_state.uid,
@@ -308,7 +325,6 @@ if page == "Check Transaction":
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === REAL-TIME USERS ===
     @st.cache_data(ttl=5)
     def get_all_users():
         try:
@@ -319,7 +335,6 @@ elif page == "Admin Dashboard":
     users = get_all_users()
     total_users = len(users)
 
-    # === TRANSACTION STATS ===
     try:
         snapshot = db.collection("transactions").get()
         total_checked = len(snapshot)
@@ -344,7 +359,6 @@ elif page == "Admin Dashboard":
             </div>
             """, unsafe_allow_html=True)
 
-    # === PIE CHART ===
     st.markdown("### Transaction Breakdown")
     if total_checked > 0:
         fig = px.pie(values=[safe_count, fraud_count], names=['Safe', 'Fraud'], hole=0.5,
@@ -355,7 +369,6 @@ elif page == "Admin Dashboard":
     else:
         st.info("No transactions yet.")
 
-    # === REGISTERED USERS - CLEAN TABLE ===
     st.markdown("### Registered Users")
     if users:
         users_sorted = sorted(users, key=lambda u: u.user_metadata.creation_timestamp or 0, reverse=True)
@@ -374,7 +387,6 @@ elif page == "Admin Dashboard":
     else:
         st.info("No users registered yet.")
 
-    # === TRANSACTION HISTORY - CLEAN TABLE ===
     st.markdown("### Transaction History")
     try:
         docs = db.collection("transactions")\
@@ -408,7 +420,6 @@ elif page == "Admin Dashboard":
     except Exception as e:
         st.error(f"Firestore error: {e}")
 
-    # === AI SENSITIVITY ===
     st.markdown("### AI Sensitivity")
     new_thr = st.slider("Risk Threshold", 0.5, 1.5, THRESHOLD, 0.05)
     st.markdown(f"""
