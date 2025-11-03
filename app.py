@@ -1,4 +1,4 @@
-# app.py - COLORFUL + FULLY VISIBLE (NO MAP, NO TOP 5)
+# app.py - COLORFUL + VISIBLE + SECURE BANK PORTAL
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -142,7 +142,7 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE – VISIBLE
+# 3. LOGIN PAGE – SECURE BANK PORTAL
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -161,11 +161,14 @@ if not st.session_state.get("logged_in", False):
         </p>
         """, unsafe_allow_html=True)
 
+    # SECURE BANK PORTAL TITLE
     with st.sidebar:
         st.markdown("""
-        <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px;">
+        <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
             <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
-            <h3 style="color: white; margin: 10px 0;">Login</h3>
+            <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">
+                Secure Bank Portal
+            </h3>
         </div>
         """, unsafe_allow_html=True)
         email = st.text_input("Email", placeholder="you@securebank.com")
@@ -175,15 +178,25 @@ if not st.session_state.get("logged_in", False):
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN
+# 4. LOGGED IN – PORTAL TITLE
 # ---------------------------------------------------------
+st.sidebar.markdown("""
+<div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
+    <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
+    <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">
+        Secure Bank Portal
+    </h3>
+</div>
+""", unsafe_allow_html=True)
+
 st.sidebar.markdown(f"""
-<div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center;">
+<div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px;">
     <p style="color: white; margin: 0; font-weight: 600;">
         User: {st.session_state.uid[:8]}...
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 if st.sidebar.button("Logout"): logout(); st.rerun()
 
 pages = ["Check Transaction"]
