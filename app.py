@@ -1,4 +1,4 @@
-# app.py - COLORFUL + FULLY VISIBLE + FIXED TABLE
+# app.py - COLORFUL + VISIBLE + REAL TRAFFIC LIGHT (NO LAST 5)
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -66,7 +66,7 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(16, 185, 129, 0.7);
     }
 
-    /* TRAFFIC LIGHT */
+    /* TRAFFIC LIGHT STYLES */
     .traffic-light {
         width: 100px; height: 100px;
         border-radius: 50%;
@@ -87,32 +87,6 @@ st.markdown("""
         text-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
-
-    /* TABLE – FULLY VISIBLE */
-    .stDataFrame > div > div {
-        background: rgba(255,255,255,0.1) !important;
-        border-radius: 16px !important;
-        overflow: hidden !important;
-    }
-    .stDataFrame table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-    }
-    .stDataFrame th {
-        background: rgba(255,255,255,0.2) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        padding: 12px !important;
-        text-align: center !important;
-    }
-    .stDataFrame td {
-        padding: 12px !important;
-        text-align: center !important;
-        font-weight: bold !important;
-        color: black !important;
-    }
-    .blocked-cell { background-color: #FCA5A5 !important; }
-    .approved-cell { background-color: #86EFAC !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,7 +159,7 @@ if not st.session_state.get("logged_in", False):
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN
+# 4. LOGGED IN – PORTAL
 # ---------------------------------------------------------
 st.sidebar.markdown("""
 <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
@@ -195,9 +169,7 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown(f"""
-<div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px;">
-    <p style="color: white; margin: 0; font-weight: 600;">User: {st.session_state.uid[:8]}...</p>
-</div>
+<div style="background: rgba(255,255,255,0.2); padding...
 """, unsafe_allow_html=True)
 
 if st.sidebar.button("Logout"): logout(); st.rerun()
@@ -208,7 +180,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: TRAFFIC LIGHT + VISIBLE TABLE
+# 5. CUSTOMER: REAL TRAFFIC LIGHT + RISK BAR ONLY
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -232,7 +204,7 @@ if page == "Check Transaction":
             status = "BLOCKED" if fraud else "SAFE"
             light_class = "red-light" if fraud else "green-light"
 
-            # TRAFFIC LIGHT
+            # TRAFFIC LIGHT INDICATOR
             st.markdown(f"""
             <div class="glass-card">
                 <div class="traffic-light {light_class}"></div>
@@ -259,24 +231,6 @@ if page == "Check Transaction":
                 font_color="white"
             )
             st.plotly_chart(fig, use_container_width=True)
-
-    # LAST 5 TRANSACTIONS – FULLY VISIBLE
-    st.markdown("### Your Last 5 Transactions")
-    history = pd.DataFrame({
-        "Amount": [120, 450, 89, 2000, 75],
-        "Status": ["Approved", "Approved", "Approved", "Blocked", "Approved"],
-        "Risk": [12, 18, 10, 88, 15]
-    })
-
-    # Apply CSS classes
-    def style_row(row):
-        return ['blocked-cell' if row.Status == "Blocked" else 'approved-cell'] * len(row)
-
-    styled = (history.style
-              .apply(style_row, axis=1)
-              .format({"Amount": "${:,.2f}", "Risk": "{}%"}))
-
-    st.dataframe(styled, use_container_width=True)
 
 # ---------------------------------------------------------
 # 6. ADMIN: CARDS + PIE
