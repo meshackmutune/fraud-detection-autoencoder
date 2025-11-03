@@ -1,4 +1,4 @@
-# app.py - FINAL: REGISTER LINK BELOW LOGIN + CONFIRM PASSWORD + SMART UX
+# app.py - FINAL: CLEAN "REGISTER HERE" LINK + CONFIRM PASSWORD + NO JS ERRORS
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -84,7 +84,6 @@ st.markdown("""
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
-    /* Clean table styling */
     section[data-testid="stTable"] table {
         width: 100% !important;
         border-collapse: collapse !important;
@@ -106,11 +105,19 @@ st.markdown("""
     .blocked-row { background-color: #FCA5A5 !important; }
     .approved-row { background-color: #86EFAC !important; }
 
-    /* Register link style */
     .register-link {
         text-align: center;
-        margin-top: 10px;
+        margin-top: 12px;
         font-size: 0.95rem;
+        color: #C7D2FE;
+    }
+    .register-link a {
+        color: #10B981 !important;
+        font-weight: bold;
+        text-decoration: none;
+    }
+    .register-link a:hover {
+        text-decoration: underline;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -169,12 +176,12 @@ def register(email, pwd, confirm_pwd):
         st.error("Email already in use or invalid.")
 
 def logout():
-    for k in ["uid", "email", "logged_in", "is_admin"]:
+    for k in ["uid", "email", "logged_in", "is_admin", "show_register"]:
         st.session_state.pop(k, None)
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE - "REGISTER HERE" LINK BELOW LOGIN BUTTON
+# 3. LOGIN PAGE - "REGISTER HERE" LINK BELOW LOGIN
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -214,61 +221,31 @@ if not st.session_state.get("logged_in", False):
         # === "REGISTER HERE" LINK BELOW LOGIN ===
         st.markdown("""
         <div class="register-link">
-            <p style="color: #C7D2FE; margin: 0;">
-                Not registered? 
-                <a href="#" id="show-register" style="color: #10B981; font-weight: bold; text-decoration: none;">
-                    Register here
-                </a>
-            </p>
+            Not registered? 
+            <a href="?show_register=1" target="_self">Register here</a>
         </div>
         """, unsafe_allow_html=True)
 
-        # === REGISTER FORM (HIDDEN UNTIL CLICKED) ===
-        if st.session_state.get("show_register_form", False):
+        # === REGISTER FORM (SHOW IF LINK CLICKED OR INVALID LOGIN) ===
+        show_register = st.query_params.get("show_register") == "1"
+        if show_register or st.session_state.get("show_register", False):
+            st.session_state.show_register = True
             st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
             st.markdown("### Create Account")
-            reg_email = st.text_input("Register Email", value=login_email or "", key="reg_email_link")
-            reg_pwd = st.text_input("Password", type="password", key="reg_pwd_link")
-            reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm_link")
-            col_reg1, col_reg2 = st.columns(2)
-            with col_reg1:
+            reg_email = st.text_input("Register Email", value=login_email or "", key="reg_email")
+            reg_pwd = st.text_input("Password", type="password", key="reg_pwd")
+            reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm")
+            col1, col2 = st.columns(2)
+            with col1:
                 if st.button("Register", use_container_width=True, type="primary"):
                     register(reg_email, reg_pwd, reg_confirm)
+                    st.query_params.clear()
                     st.rerun()
-            with col_reg2:
+            with col2:
                 if st.button("Cancel", use_container_width=True):
-                    st.session_state.show_register_form = False
+                    st.session_state.show_register = False
+                    st.query_params.clear()
                     st.rerun()
-
-    # === JAVASCRIPT TO TOGGLE REGISTER FORM ===
-    st.markdown("""
-    <script>
-        document.getElementById('show-register').addEventListener('click', function(e) {
-            e.preventDefault();
-            window.parent.document.querySelector('section').__vue_app__.config.globalProperties.$root.$emit('show-register-form');
-        });
-    </script>
-    """, unsafe_allow_html=True)
-
-    # === LISTEN FOR LINK CLICK ===
-    if st._is_running_with_streamlit:
-        import streamlit.components.v1 as components
-        components.html("""
-        <script>
-            const showForm = () => {
-                window.parent.document.dispatchEvent(new CustomEvent('show-register-form'));
-            };
-            document.addEventListener('DOMContentLoaded', () => {
-                const link = document.getElementById('show-register');
-                if (link) link.onclick = showForm;
-            });
-        </script>
-        """, height=0)
-
-    # === CUSTOM EVENT LISTENER IN PYTHON ===
-    if st._get_query_params().get("show_register") == ["1"]:
-        st.session_state.show_register_form = True
-        st.query_params.clear()
 
     st.stop()
 
@@ -301,7 +278,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SILENT SAVE (NO MESSAGE)
+# 5. CUSTOMER: SILENT SAVE
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -317,7 +294,6 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === SILENT SAVE ===
             try:
                 db.collection("transactions").add({
                     "uid": st.session_state.uid,
@@ -372,7 +348,7 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: CLEAN TABLES + FULL DATA
+# 6. ADMIN DASHBOARD
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
