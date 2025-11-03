@@ -1,4 +1,4 @@
-# app.py - FULL USERS + FULL TRANSACTIONS + REAL-TIME
+# app.py - CLEAN TABLES + FULL DATA + NO HTML VISIBLE
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -84,19 +84,20 @@ st.markdown("""
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
-    .transaction-table table, .users-table table {
+    /* Hide Streamlit table HTML */
+    section[data-testid="stTable"] table {
         width: 100% !important;
         border-collapse: collapse !important;
         font-size: 14px;
     }
-    .transaction-table th, .users-table th {
+    section[data-testid="stTable"] th {
         background: rgba(255,255,255,0.2) !important;
         color: white !important;
         font-weight: 600 !important;
         padding: 12px !important;
         text-align: center !important;
     }
-    .transaction-table td, .users-table td {
+    section[data-testid="stTable"] td {
         padding: 10px !important;
         text-align: center !important;
         color: black !important;
@@ -272,12 +273,12 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: FULL USERS + FULL TRANSACTIONS
+# 6. ADMIN DASHBOARD: CLEAN TABLES (NO HTML CODE)
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === REAL-TIME USERS (REFRESH EVERY 5 SEC) ===
+    # === REAL-TIME USERS ===
     @st.cache_data(ttl=5)
     def get_all_users():
         try:
@@ -324,10 +325,9 @@ elif page == "Admin Dashboard":
     else:
         st.info("No transactions yet.")
 
-    # === ALL REGISTERED USERS (NEWEST FIRST) ===
+    # === REGISTERED USERS - CLEAN TABLE ===
     st.markdown("### Registered Users")
     if users:
-        # Sort by registration time (newest first)
         users_sorted = sorted(users, key=lambda u: u.user_metadata.creation_timestamp or 0, reverse=True)
         user_data = []
         for user in users_sorted:
@@ -340,37 +340,20 @@ elif page == "Admin Dashboard":
                 "Status": "Active"
             })
         df_users = pd.DataFrame(user_data)
-
-        def make_user_row(row):
-            return f"""
-            <tr>
-                <td>{row["Email"]}</td>
-                <td>{row["User ID"]}</td>
-                <td>{row["Registered"]}</td>
-                <td><span style="color:#10B981; font-weight:bold;">{row["Status"]}</span></td>
-            </tr>
-            """
-        rows_html = "".join(df_users.apply(make_user_row, axis=1))
-        users_table = f"""
-        <div class="users-table">
-        <table>
-            <thead><tr>
-                <th>Email</th><th>User ID</th><th>Registered</th><th>Status</th>
-            </tr></thead>
-            <tbody>{rows_html}</tbody>
-        </table>
-        </div>
-        """
-        st.markdown(users_table, unsafe_allow_html=True)
+        st.dataframe(
+            df_users,
+            use_container_width=True,
+            hide_index=True
+        )
     else:
         st.info("No users registered yet.")
 
-    # === ALL TRANSACTION HISTORY (NEWEST FIRST) ===
+    # === TRANSACTION HISTORY - CLEAN TABLE ===
     st.markdown("### Transaction History")
     try:
         docs = db.collection("transactions")\
                  .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-                 .stream()  # NO LIMIT → SHOW ALL
+                 .stream()
 
         data = []
         for doc in docs:
@@ -387,30 +370,14 @@ elif page == "Admin Dashboard":
 
         if data:
             df = pd.DataFrame(data)
-
-            def make_row(row):
-                cls = "blocked-row" if row["Status"] == "Blocked" else "approved-row"
-                return f"""
-                <tr class="{cls}">
-                    <td>{row["Timestamp"]}</td>
-                    <td>{row["User ID"]}</td>
-                    <td>{row["Amount"]}</td>
-                    <td>{row["Status"]}</td>
-                    <td>{row["Risk"]}</td>
-                </tr>
-                """
-            rows = "".join(df.apply(make_row, axis=1))
-            table = f"""
-            <div class="transaction-table">
-            <table>
-                <thead><tr>
-                    <th>Timestamp</th><th>User ID</th><th>Amount</th><th>Status</th><th>Risk</th>
-                </tr></thead>
-                <tbody>{rows}</tbody>
-            </table>
-            </div>
-            """
-            st.markdown(table, unsafe_allow_html=True)
+            # Apply row styling
+            def style_row(row):
+                return ['background-color: #FCA5A5' if row["Status"] == "Blocked" else 'background-color: #86EFAC' for _ in row]
+            st.dataframe(
+                df.style.apply(style_row, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             st.info("No transaction history yet.")
     except Exception as e:
