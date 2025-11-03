@@ -6,3 +6,5 @@ scikit-learn
 matplotlib
 firebase-admin
 gdown
+plotly
+
