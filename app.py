@@ -1,4 +1,4 @@
-# app.py - ADMIN: REAL HISTORY + REAL-TIME SAVING + STYLING FIX
+# app.py - ADMIN DASHBOARD: REAL STATS + HISTORY + NO ERRORS
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -84,7 +84,6 @@ st.markdown("""
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
-    /* Table Styling */
     .transaction-table table {
         width: 100% !important;
         border-collapse: collapse !important;
@@ -202,7 +201,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SAVE + DISPLAY
+# 5. CUSTOMER: SAVE ONLY IF ADMIN
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -218,17 +217,21 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === SAVE TO FIRESTORE ===
-            try:
-                db.collection("transactions").add({
-                    "uid": st.session_state.uid,
-                    "amount": amount,
-                    "error": float(err),
-                    "fraud": fraud,
-                    "timestamp": firestore.SERVER_TIMESTAMP
-                })
-            except Exception as e:
-                st.warning("Saved locally (Firestore offline)")
+            # === SAVE ONLY IF ADMIN ===
+            if st.session_state.get("is_admin"):
+                try:
+                    db.collection("transactions").add({
+                        "uid": st.session_state.uid,
+                        "amount": amount,
+                        "error": float(err),
+                        "fraud": fraud,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    })
+                    st.success("Transaction saved.")
+                except Exception as e:
+                    st.error("Failed to save. Check Firestore.")
+            else:
+                st.info("Transaction checked (not saved — admin only).")
 
             st.session_state.last_err = err
             st.session_state.last_fraud = fraud
@@ -274,33 +277,31 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: REAL USERS + REAL HISTORY
+# 6. ADMIN DASHBOARD: REAL STATS + HISTORY
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === USERS ===
+    # === USER COUNT ===
     try:
-        user_list = list(auth.list_users().iterate_all())
-        total_users = len(user_list)
+        total_users = len(list(auth.list_users().iterate_all()))
     except:
         total_users = 0
 
-    # === SUMMARY STATS ===
+    # === TRANSACTION STATS ===
     try:
-        snapshot = db.collection("transactions").get()
-        total = len(snapshot)
-        fraud = sum(1 for doc in snapshot if doc.to_dict().get("fraud"))
-        false = total - fraud
-        normal = total - fraud
+        docs = db.collection("transactions").get()
+        total_checked = len(docs)
+        fraud_count = sum(1 for doc in docs if doc.to_dict().get("fraud"))
+        safe_count = total_checked - fraud_count
     except:
-        total, fraud, false, normal = 0, 0, 0, 0
+        total_checked = fraud_count = safe_count = 0
 
     col1, col2, col3, col4 = st.columns(4)
     cards = [
-        ("Fraud Caught", fraud, "#EF4444"),
-        ("False Alerts", false, "#F59E0B"),
-        ("Total Checked", total, "#0EA5E9"),
+        ("Fraud Caught", fraud_count, "#EF4444"),
+        ("False Alerts", 0, "#F59E0B"),  # Not tracked
+        ("Total Checked", total_checked, "#0EA5E9"),
         ("Registered Users", total_users, "#8B5CF6")
     ]
     for col, (label, value, color) in zip([col1, col2, col3, col4], cards):
@@ -314,59 +315,62 @@ elif page == "Admin Dashboard":
 
     # === PIE CHART ===
     st.markdown("### Transaction Breakdown")
-    if total > 0:
-        fig = px.pie(values=[normal, fraud, false], names=['Safe', 'Fraud', 'False'], hole=0.5,
-                     color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'])
+    if total_checked > 0:
+        fig = px.pie(values=[safe_count, fraud_count], names=['Safe', 'Fraud'], hole=0.5,
+                     color_discrete_sequence=['#10B981', '#EF4444'])
         fig.update_traces(textinfo='percent+label', textfont_size=15)
         fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No transactions yet.")
 
-    # === REAL TRANSACTION HISTORY ===
+    # === TRANSACTION HISTORY ===
     st.markdown("### Transaction History")
     try:
         docs = db.collection("transactions").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream()
         data = []
         for doc in docs:
             d = doc.to_dict()
+            ts = d.get("timestamp")
+            timestamp_str = ts.strftime("%Y-%m-%d %H:%M") if ts else "Unknown"
             data.append({
-                "Timestamp": d.get("timestamp", datetime.now()).strftime("%Y-%m-%d %H:%M"),
+                "Timestamp": timestamp_str,
                 "User ID": d.get("uid", "unknown")[:8] + "...",
                 "Amount": d.get("amount", 0),
                 "Status": "Blocked" if d.get("fraud") else "Approved",
                 "Risk": f"{int(d.get('error', 0) * 100)}%"
             })
-        df = pd.DataFrame(data)
-        df["Amount"] = df["Amount"].map("${:,.2f}".format)
+        if data:
+            df = pd.DataFrame(data)
+            df["Amount"] = df["Amount"].map("${:,.2f}".format)
 
-        # === RENDER AS HTML TABLE (FULL STYLING) ===
-        def make_html_row(row):
-            cls = "blocked-row" if row["Status"] == "Blocked" else "approved-row"
-            return f"""
-            <tr class="{cls}">
-                <td>{row["Timestamp"]}</td>
-                <td>{row["User ID"]}</td>
-                <td>{row["Amount"]}</td>
-                <td>{row["Status"]}</td>
-                <td>{row["Risk"]}</td>
-            </tr>
+            def make_row(row):
+                cls = "blocked-row" if row["Status"] == "Blocked" else "approved-row"
+                return f"""
+                <tr class="{cls}">
+                    <td>{row["Timestamp"]}</td>
+                    <td>{row["User ID"]}</td>
+                    <td>{row["Amount"]}</td>
+                    <td>{row["Status"]}</td>
+                    <td>{row["Risk"]}</td>
+                </tr>
+                """
+            rows = "".join(df.apply(make_row, axis=1))
+            table = f"""
+            <div class="transaction-table">
+            <table>
+                <thead><tr>
+                    <th>Timestamp</th><th>User ID</th><th>Amount</th><th>Status</th><th>Risk</th>
+                </tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+            </div>
             """
-
-        rows_html = "".join(df.apply(make_html_row, axis=1))
-        table_html = f"""
-        <div class="transaction-table">
-        <table>
-            <thead><tr>
-                <th>Timestamp</th><th>User ID</th><th>Amount</th><th>Status</th><th>Risk</th>
-            </tr></thead>
-            <tbody>{rows_html}</tbody>
-        </table>
-        </div>
-        """
-        st.markdown(table_html, unsafe_allow_html=True)
+            st.markdown(table, unsafe_allow_html=True)
+        else:
+            st.info("No transaction history.")
     except Exception as e:
-        st.error("Could not load history. Check Firestore rules.")
+        st.error(f"Firestore error: {str(e)}")
 
     # === AI SENSITIVITY ===
     st.markdown("### AI Sensitivity")
