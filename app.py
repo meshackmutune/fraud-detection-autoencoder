@@ -1,4 +1,4 @@
-# app.py - COLORFUL + VISIBLE + SECURE BANK PORTAL
+# app.py - COLORFUL + VISIBLE + REAL TRAFFIC LIGHT
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 
 # ---------------------------------------------------------
-# 0. PAGE CONFIG + VISIBLE THEME
+# 0. PAGE CONFIG + THEME
 # ---------------------------------------------------------
 st.set_page_config(page_title="Secure Bank", layout="wide", initial_sidebar_state="expanded")
 
@@ -18,7 +18,7 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
     * { font-family: 'Poppins', sans-serif; }
 
-    /* Soft Animated Gradient Background */
+    /* Gradient Background */
     .stApp {
         background: linear-gradient(135deg, #1E3A8A, #1E40AF, #1D4ED8, #2563EB);
         background-size: 300% 300%;
@@ -31,7 +31,7 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
 
-    /* High-Contrast Glass Cards */
+    /* Glass Cards */
     .glass-card {
         background: rgba(255, 255, 255, 0.18);
         backdrop-filter: blur(12px);
@@ -48,7 +48,7 @@ st.markdown("""
         box-shadow: 0 12px 30px rgba(0,0,0,0.4);
     }
 
-    /* Bright Rainbow Buttons */
+    /* Buttons */
     .stButton > button {
         background: linear-gradient(45deg, #10B981, #14B8A6, #0EA5E9);
         color: white !important;
@@ -66,37 +66,27 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(16, 185, 129, 0.7);
     }
 
-    /* Glowing Traffic Light */
-    .light {
-        font-size: 130px;
-        line-height: 1;
-        text-shadow: 0 0 25px currentColor;
+    /* TRAFFIC LIGHT STYLES */
+    .traffic-light {
+        width: 100px; height: 100px;
+        border-radius: 50%;
+        margin: 0 auto 16px;
+        box-shadow: 0 0 30px currentColor, 0 0 60px rgba(0,0,0,0.4);
+        animation: glow 2s infinite alternate;
     }
+    @keyframes glow {
+        from { box-shadow: 0 0 30px currentColor, 0 0 60px rgba(0,0,0,0.4); }
+        to { box-shadow: 0 0 50px currentColor, 0 0 80px rgba(0,0,0,0.5); }
+    }
+    .green-light { background: #10B981; }
+    .red-light { background: #EF4444; }
 
     /* Big Numbers */
     .big-number {
-        font-size: 52px;
-        font-weight: 700;
-        margin: 0;
-        color: white;
+        font-size: 52px; font-weight: 700; margin: 0; color: white;
         text-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
-    .label {
-        font-size: 17px;
-        color: #E0E7FF;
-        margin-top: 6px;
-        font-weight: 500;
-    }
-
-    /* Table */
-    .stDataFrame {
-        border-radius: 16px;
-        overflow: hidden;
-        background: rgba(255,255,255,0.1);
-    }
-
-    /* Sidebar */
-    .css-1d391kg { background: rgba(30, 58, 138, 0.9); }
+    .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -142,7 +132,7 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE – SECURE BANK PORTAL
+# 3. LOGIN PAGE
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -150,25 +140,16 @@ if not st.session_state.get("logged_in", False):
         st.image("https://img.icons8.com/fluency/256/bank-building.png", width=220)
     with col2:
         st.markdown("""
-        <h1 style='color: white; font-weight: 700;'>
-            Secure Bank
-        </h1>
-        <p style='color: #C7D2FE; font-size: 1.3rem;'>
-            <b>AI-Powered Fraud Protection</b>
-        </p>
-        <p style='color: #A5B4FC;'>
-            86% fraud caught • Only 4% false alerts
-        </p>
+        <h1 style='color: white; font-weight: 700;'>Secure Bank</h1>
+        <p style='color: #C7D2FE; font-size: 1.3rem;'><b>AI-Powered Fraud Protection</b></p>
+        <p style='color: #A5B4FC;'>86% fraud caught • Only 4% false alerts</p>
         """, unsafe_allow_html=True)
 
-    # SECURE BANK PORTAL TITLE
     with st.sidebar:
         st.markdown("""
         <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
             <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
-            <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">
-                Secure Bank Portal
-            </h3>
+            <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">Secure Bank Portal</h3>
         </div>
         """, unsafe_allow_html=True)
         email = st.text_input("Email", placeholder="you@securebank.com")
@@ -178,22 +159,18 @@ if not st.session_state.get("logged_in", False):
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN – PORTAL TITLE
+# 4. LOGGED IN – PORTAL
 # ---------------------------------------------------------
 st.sidebar.markdown("""
 <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
     <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
-    <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">
-        Secure Bank Portal
-    </h3>
+    <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">Secure Bank Portal</h3>
 </div>
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown(f"""
 <div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px;">
-    <p style="color: white; margin: 0; font-weight: 600;">
-        User: {st.session_state.uid[:8]}...
-    </p>
+    <p style="color: white; margin: 0; font-weight: 600;">User: {st.session_state.uid[:8]}...</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -205,7 +182,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: TRAFFIC LIGHT + BAR
+# 5. CUSTOMER: REAL TRAFFIC LIGHT
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -226,16 +203,15 @@ if page == "Check Transaction":
     with colB:
         if 'last_err' in st.session_state:
             fraud = st.session_state.last_fraud
-            color = "#10B981" if not fraud else "#EF4444"
-            status = "SAFE" if not fraud else "BLOCKED"
+            status = "BLOCKED" if fraud else "SAFE"
+            light_class = "red-light" if fraud else "green-light"
+            light_text = "Red Light" if fraud else "Green Light"
 
-            # TRAFFIC LIGHT
+            # TRAFFIC LIGHT INDICATOR
             st.markdown(f"""
             <div class="glass-card">
-                <div class="light" style="color: {color};">
-                    Circle
-                </div>
-                <p class="big-number" style="color: {color};">{status}</p>
+                <div class="traffic-light {light_class}"></div>
+                <p class="big-number" style="color: {'#EF4444' if fraud else '#10B981'};">{status}</p>
                 <p class="label">Transaction is <b>{status}</b></p>
             </div>
             """, unsafe_allow_html=True)
@@ -246,7 +222,7 @@ if page == "Check Transaction":
             fig = go.Figure(go.Bar(
                 x=['Your Risk', 'Average'],
                 y=[your_risk, avg_risk],
-                marker_color=[color, '#64748B'],
+                marker_color=['#EF4444' if fraud else '#10B981', '#64748B'],
                 text=[f"{your_risk}%", f"{avg_risk}%"],
                 textposition='outside'
             ))
@@ -299,7 +275,6 @@ elif page == "Admin Dashboard":
             </div>
             """, unsafe_allow_html=True)
 
-    # PIE CHART
     st.markdown("### Transaction Breakdown")
     fig = px.pie(
         values=[normal, fraud, false],
@@ -311,7 +286,6 @@ elif page == "Admin Dashboard":
     fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
 
-    # THRESHOLD
     st.markdown("### AI Sensitivity")
     new_thr = st.slider("Risk Threshold", 0.5, 1.5, THRESHOLD, 0.05)
     st.markdown(f"""
