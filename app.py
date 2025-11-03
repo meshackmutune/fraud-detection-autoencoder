@@ -272,19 +272,23 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: USERS TABLE + HISTORY
+# 6. ADMIN DASHBOARD: USERS TABLE + REAL-TIME (FIXED)
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === USER COUNT + STATS ===
-    try:
-        users = list(auth.list_users().iterate_all())
-        total_users = len(users)
-    except:
-        users = []
-        total_users = 0
+    # === USER LIST (REFRESH EVERY 5 SECONDS) ===
+    @st.cache_data(ttl=5)  # ← REFRESH EVERY 5 SECONDS
+    def get_all_users():
+        try:
+            return list(auth.list_users().iterate_all())
+        except:
+            return []
 
+    users = get_all_users()
+    total_users = len(users)
+
+    # === TRANSACTION STATS ===
     try:
         snapshot = db.collection("transactions").get()
         total_checked = len(snapshot)
@@ -320,7 +324,7 @@ elif page == "Admin Dashboard":
     else:
         st.info("No transactions yet.")
 
-    # === REGISTERED USERS TABLE ===
+    # === REGISTERED USERS TABLE (NOW SHOWS ALL) ===
     st.markdown("### Registered Users")
     if users:
         user_data = []
@@ -357,7 +361,7 @@ elif page == "Admin Dashboard":
         """
         st.markdown(users_table, unsafe_allow_html=True)
     else:
-        st.info("No users registered yet.")
+        st.info("No users found. Try registering one.")
 
     # === TRANSACTION HISTORY ===
     st.markdown("### Transaction History")
