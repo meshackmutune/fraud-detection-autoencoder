@@ -1,4 +1,4 @@
-# app.py - FINAL: CONFIRM PASSWORD + SMART REGISTER POPUP + SILENT SAVE
+# app.py - FINAL: REGISTER LINK BELOW LOGIN + CONFIRM PASSWORD + SMART UX
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -105,6 +105,13 @@ st.markdown("""
     }
     .blocked-row { background-color: #FCA5A5 !important; }
     .approved-row { background-color: #86EFAC !important; }
+
+    /* Register link style */
+    .register-link {
+        text-align: center;
+        margin-top: 10px;
+        font-size: 0.95rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -167,7 +174,7 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE - SMART REGISTER POPUP + CONFIRM PASSWORD
+# 3. LOGIN PAGE - "REGISTER HERE" LINK BELOW LOGIN BUTTON
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -193,7 +200,6 @@ if not st.session_state.get("logged_in", False):
         login_email = st.text_input("Email", placeholder="you@securebank.com", key="login_email")
         login_pwd = st.text_input("Password", type="password", key="login_pwd")
 
-        show_register = False
         if st.button("Login", use_container_width=True):
             if not login_email or not login_pwd:
                 st.error("Please fill in both fields.")
@@ -203,20 +209,66 @@ if not st.session_state.get("logged_in", False):
                     login(login_email, login_pwd)
                 except:
                     st.error("No account found.")
-                    show_register = True
             st.rerun()
 
-        # === SMART REGISTER POPUP WITH CONFIRM PASSWORD ===
-        if show_register or (login_email and "@" in login_email and not login_pwd):
+        # === "REGISTER HERE" LINK BELOW LOGIN ===
+        st.markdown("""
+        <div class="register-link">
+            <p style="color: #C7D2FE; margin: 0;">
+                Not registered? 
+                <a href="#" id="show-register" style="color: #10B981; font-weight: bold; text-decoration: none;">
+                    Register here
+                </a>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # === REGISTER FORM (HIDDEN UNTIL CLICKED) ===
+        if st.session_state.get("show_register_form", False):
             st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
-            st.markdown("### New User?")
-            st.markdown("<p style='color: #C7D2FE; text-align:center;'>No account? Register instantly!</p>", unsafe_allow_html=True)
-            reg_email = st.text_input("Register Email", value=login_email, key="reg_email_popup")
-            reg_pwd = st.text_input("Password", type="password", key="reg_pwd_popup")
-            reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm_popup")
-            if st.button("Register Now", use_container_width=True, type="primary"):
-                register(reg_email, reg_pwd, reg_confirm)
-                st.rerun()
+            st.markdown("### Create Account")
+            reg_email = st.text_input("Register Email", value=login_email or "", key="reg_email_link")
+            reg_pwd = st.text_input("Password", type="password", key="reg_pwd_link")
+            reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm_link")
+            col_reg1, col_reg2 = st.columns(2)
+            with col_reg1:
+                if st.button("Register", use_container_width=True, type="primary"):
+                    register(reg_email, reg_pwd, reg_confirm)
+                    st.rerun()
+            with col_reg2:
+                if st.button("Cancel", use_container_width=True):
+                    st.session_state.show_register_form = False
+                    st.rerun()
+
+    # === JAVASCRIPT TO TOGGLE REGISTER FORM ===
+    st.markdown("""
+    <script>
+        document.getElementById('show-register').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.parent.document.querySelector('section').__vue_app__.config.globalProperties.$root.$emit('show-register-form');
+        });
+    </script>
+    """, unsafe_allow_html=True)
+
+    # === LISTEN FOR LINK CLICK ===
+    if st._is_running_with_streamlit:
+        import streamlit.components.v1 as components
+        components.html("""
+        <script>
+            const showForm = () => {
+                window.parent.document.dispatchEvent(new CustomEvent('show-register-form'));
+            };
+            document.addEventListener('DOMContentLoaded', () => {
+                const link = document.getElementById('show-register');
+                if (link) link.onclick = showForm;
+            });
+        </script>
+        """, height=0)
+
+    # === CUSTOM EVENT LISTENER IN PYTHON ===
+    if st._get_query_params().get("show_register") == ["1"]:
+        st.session_state.show_register_form = True
+        st.query_params.clear()
 
     st.stop()
 
