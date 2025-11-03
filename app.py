@@ -1,4 +1,4 @@
-# app.py - ADMIN: USERS TABLE + REAL-TIME DATA
+# app.py - FULL USERS + FULL TRANSACTIONS + REAL-TIME
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -272,13 +272,13 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: USERS TABLE + REAL-TIME (FIXED)
+# 6. ADMIN DASHBOARD: FULL USERS + FULL TRANSACTIONS
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === USER LIST (REFRESH EVERY 5 SECONDS) ===
-    @st.cache_data(ttl=5)  # ← REFRESH EVERY 5 SECONDS
+    # === REAL-TIME USERS (REFRESH EVERY 5 SEC) ===
+    @st.cache_data(ttl=5)
     def get_all_users():
         try:
             return list(auth.list_users().iterate_all())
@@ -324,11 +324,13 @@ elif page == "Admin Dashboard":
     else:
         st.info("No transactions yet.")
 
-    # === REGISTERED USERS TABLE (NOW SHOWS ALL) ===
+    # === ALL REGISTERED USERS (NEWEST FIRST) ===
     st.markdown("### Registered Users")
     if users:
+        # Sort by registration time (newest first)
+        users_sorted = sorted(users, key=lambda u: u.user_metadata.creation_timestamp or 0, reverse=True)
         user_data = []
-        for user in users:
+        for user in users_sorted:
             reg_time = user.user_metadata.creation_timestamp
             reg_date = datetime.fromtimestamp(reg_time / 1000).strftime("%Y-%m-%d %H:%M") if reg_time else "—"
             user_data.append({
@@ -361,14 +363,15 @@ elif page == "Admin Dashboard":
         """
         st.markdown(users_table, unsafe_allow_html=True)
     else:
-        st.info("No users found. Try registering one.")
+        st.info("No users registered yet.")
 
-    # === TRANSACTION HISTORY ===
+    # === ALL TRANSACTION HISTORY (NEWEST FIRST) ===
     st.markdown("### Transaction History")
     try:
         docs = db.collection("transactions")\
                  .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-                 .limit(50).stream()
+                 .stream()  # NO LIMIT → SHOW ALL
+
         data = []
         for doc in docs:
             d = doc.to_dict()
@@ -381,6 +384,7 @@ elif page == "Admin Dashboard":
                 "Status": "Blocked" if d.get("fraud") else "Approved",
                 "Risk": f"{int(d.get('error', 0) * 100)}%"
             })
+
         if data:
             df = pd.DataFrame(data)
 
