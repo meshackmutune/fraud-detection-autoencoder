@@ -1,4 +1,4 @@
-# app.py - COLORFUL + VISIBLE + THRESHOLD GRAPH FOR CUSTOMER
+# app.py - COLORFUL + ADMIN: USERS + TRANSACTION HISTORY
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
+from datetime import datetime
 
 # ---------------------------------------------------------
 # 0. PAGE CONFIG + THEME
@@ -18,7 +19,6 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
     * { font-family: 'Poppins', sans-serif; }
 
-    /* Gradient Background */
     .stApp {
         background: linear-gradient(135deg, #1E3A8A, #1E40AF, #1D4ED8, #2563EB);
         background-size: 300% 300%;
@@ -31,7 +31,6 @@ st.markdown("""
         100% { background-position: 0% 50%; }
     }
 
-    /* Glass Cards */
     .glass-card {
         background: rgba(255, 255, 255, 0.18);
         backdrop-filter: blur(12px);
@@ -48,7 +47,6 @@ st.markdown("""
         box-shadow: 0 12px 30px rgba(0,0,0,0.4);
     }
 
-    /* Buttons */
     .stButton > button {
         background: linear-gradient(45deg, #10B981, #14B8A6, #0EA5E9);
         color: white !important;
@@ -66,7 +64,6 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(16, 185, 129, 0.7);
     }
 
-    /* TRAFFIC LIGHT */
     .traffic-light {
         width: 100px; height: 100px;
         border-radius: 50%;
@@ -81,12 +78,32 @@ st.markdown("""
     .green-light { background: #10B981; }
     .red-light { background: #EF4444; }
 
-    /* Big Numbers */
     .big-number {
         font-size: 52px; font-weight: 700; margin: 0; color: white;
         text-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
+
+    /* Table Styling */
+    .stDataFrame table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    .stDataFrame th {
+        background: rgba(255,255,255,0.2) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 12px !important;
+        text-align: center !important;
+    }
+    .stDataFrame td {
+        padding: 10px !important;
+        text-align: center !important;
+        color: black !important;
+        font-weight: bold !important;
+    }
+    .blocked-cell { background-color: #FCA5A5 !important; }
+    .approved-cell { background-color: #86EFAC !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -159,7 +176,7 @@ if not st.session_state.get("logged_in", False):
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN – PORTAL
+# 4. LOGGED IN
 # ---------------------------------------------------------
 st.sidebar.markdown("""
 <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
@@ -182,7 +199,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: TRAFFIC LIGHT + RISK BAR + THRESHOLD GRAPH
+# 5. CUSTOMER: TRAFFIC LIGHT + THRESHOLD GRAPH
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -206,7 +223,6 @@ if page == "Check Transaction":
             status = "BLOCKED" if fraud else "SAFE"
             light_class = "red-light" if fraud else "green-light"
 
-            # TRAFFIC LIGHT
             st.markdown(f"""
             <div class="glass-card">
                 <div class="traffic-light {light_class}"></div>
@@ -215,7 +231,6 @@ if page == "Check Transaction":
             </div>
             """, unsafe_allow_html=True)
 
-            # RISK BAR
             your_risk = min(100, int(err * 100))
             avg_risk = 15
             fig = go.Figure(go.Bar(
@@ -225,67 +240,49 @@ if page == "Check Transaction":
                 text=[f"{your_risk}%", f"{avg_risk}%"],
                 textposition='outside'
             ))
-            fig.update_layout(
-                title="Risk Level",
-                yaxis_title="Risk %",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color="white"
-            )
+            fig.update_layout(title="Risk Level", yaxis_title="Risk %", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color="white")
             st.plotly_chart(fig, use_container_width=True)
 
-            # NEW: THRESHOLD GRAPH
+            # Threshold Graph
             st.markdown("### How the AI Decides")
-            # Simulate normal distribution of errors
             x = np.linspace(0, 2, 200)
             normal_errors = np.exp(-((x - 0.3)**2) / (2 * 0.1**2)) / np.sqrt(2 * np.pi * 0.1**2)
             fraud_errors = np.exp(-((x - 1.2)**2) / (2 * 0.3**2)) / np.sqrt(2 * np.pi * 0.3**2) * 0.3
 
             fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=x, y=normal_errors, fill='tozeroy', fillcolor='rgba(16,185,129,0.3)',
-                                     line_color='rgba(0,0,0,0)', name='Normal'))
-            fig2.add_trace(go.Scatter(x=x, y=fraud_errors, fill='tozeroy', fillcolor='rgba(239,68,68,0.3)',
-                                     line_color='rgba(0,0,0,0)', name='Fraud'))
-
-            # Threshold line
-            fig2.add_vline(x=THRESHOLD, line_dash="dash", line_color="#F59E0B",
-                           annotation_text=f"Threshold: {THRESHOLD:.2f}", annotation_position="top")
-
-            # Your transaction
-            your_err = st.session_state.last_err
-            fig2.add_scatter(x=[your_err], y=[0], mode='markers',
-                             marker=dict(size=16, color='#EF4444' if fraud else '#10B981', symbol='star'),
-                             name="Your Transaction")
-
-            fig2.update_layout(
-                title="AI Decision Engine",
-                xaxis_title="Reconstruction Error",
-                yaxis_title="Density",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color="white",
-                legend=dict(y=0.99, x=0.01, bgcolor='rgba(255,255,255,0.1)')
-            )
+            fig2.add_trace(go.Scatter(x=x, y=normal_errors, fill='tozeroy', fillcolor='rgba(16,185,129,0.3)', line_color='rgba(0,0,0,0)', name='Normal'))
+            fig2.add_trace(go.Scatter(x=x, y=fraud_errors, fill='tozeroy', fillcolor='rgba(239,68,68,0.3)', line_color='rgba(0,0,0,0)', name='Fraud'))
+            fig2.add_vline(x=THRESHOLD, line_dash="dash", line_color="#F59E0B", annotation_text=f"Threshold: {THRESHOLD:.2f}", annotation_position="top")
+            fig2.add_scatter(x=[err], y=[0], mode='markers', marker=dict(size=16, color='#EF4444' if fraud else '#10B981', symbol='star'), name="Your Transaction")
+            fig2.update_layout(title="AI Decision Engine", xaxis_title="Reconstruction Error", yaxis_title="Density", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color="white", legend=dict(y=0.99, x=0.01, bgcolor='rgba(255,255,255,0.1)'))
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN: CARDS + PIE
+# 6. ADMIN DASHBOARD: USERS + HISTORY
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
+
+    # === GET REGISTERED USERS ===
+    try:
+        user_list = list(auth.list_users().iterate_all())
+        total_users = len(user_list)
+    except:
+        total_users = 0
 
     total = 12500
     fraud = 480
     false = 420
     normal = total - fraud - false
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     cards = [
         ("Fraud Caught", fraud, "#EF4444"),
         ("False Alerts", false, "#F59E0B"),
-        ("Total Checked", total, "#0EA5E9")
+        ("Total Checked", total, "#0EA5E9"),
+        ("Registered Users", total_users, "#8B5CF6")
     ]
-    for col, (label, value, color) in zip([col1, col2, col3], cards):
+    for col, (label, value, color) in zip([col1, col2, col3, col4], cards):
         with col:
             st.markdown(f"""
             <div class="glass-card">
@@ -294,17 +291,35 @@ elif page == "Admin Dashboard":
             </div>
             """, unsafe_allow_html=True)
 
+    # === PIE CHART ===
     st.markdown("### Transaction Breakdown")
-    fig = px.pie(
-        values=[normal, fraud, false],
-        names=['Safe', 'Fraud', 'False'],
-        hole=0.5,
-        color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B']
-    )
+    fig = px.pie(values=[normal, fraud, false], names=['Safe', 'Fraud', 'False'], hole=0.5,
+                 color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'])
     fig.update_traces(textinfo='percent+label', textfont_size=15)
     fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
 
+    # === TRANSACTION HISTORY TABLE ===
+    st.markdown("### Transaction History")
+    # Mock data (replace with real Firestore data later)
+    history_data = [
+        {"Timestamp": "2025-04-01 14:23", "User ID": "abc123...", "Amount": 120.00, "Status": "Approved", "Risk": 12},
+        {"Timestamp": "2025-04-01 13:55", "User ID": "def456...", "Amount": 2000.00, "Status": "Blocked", "Risk": 88},
+        {"Timestamp": "2025-04-01 12:10", "User ID": "ghi789...", "Amount": 89.50, "Status": "Approved", "Risk": 10},
+        {"Timestamp": "2025-04-01 11:45", "User ID": "jkl012...", "Amount": 450.00, "Status": "Approved", "Risk": 18},
+        {"Timestamp": "2025-04-01 10:30", "User ID": "mno345...", "Amount": 75.00, "Status": "Approved", "Risk": 15},
+    ]
+    df = pd.DataFrame(history_data)
+    df["Amount"] = df["Amount"].map("${:,.2f}".format)
+    df["Risk"] = df["Risk"].astype(str) + "%"
+
+    def style_status(row):
+        return ['blocked-cell' if row.Status == "Blocked" else 'approved-cell'] * len(row)
+
+    styled_df = df.style.apply(style_status, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
+
+    # === AI SENSITIVITY ===
     st.markdown("### AI Sensitivity")
     new_thr = st.slider("Risk Threshold", 0.5, 1.5, THRESHOLD, 0.05)
     st.markdown(f"""
