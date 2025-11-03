@@ -1,4 +1,4 @@
-# app.py - FIXED: NO np.bool_ ERROR + CUSTOMER SAVES → ADMIN SEES
+# app.py - ADMIN: USERS TABLE + REAL-TIME DATA
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -84,19 +84,19 @@ st.markdown("""
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
-    .transaction-table table {
+    .transaction-table table, .users-table table {
         width: 100% !important;
         border-collapse: collapse !important;
         font-size: 14px;
     }
-    .transaction-table th {
+    .transaction-table th, .users-table th {
         background: rgba(255,255,255,0.2) !important;
         color: white !important;
         font-weight: 600 !important;
         padding: 12px !important;
         text-align: center !important;
     }
-    .transaction-table td {
+    .transaction-table td, .users-table td {
         padding: 10px !important;
         text-align: center !important;
         color: black !important;
@@ -201,7 +201,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SAVE EVERY TRANSACTION (FIXED np.bool_)
+# 5. CUSTOMER: SAVE EVERY TRANSACTION
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -217,13 +217,12 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === FIXED: Convert np.bool_ → Python bool ===
             try:
                 db.collection("transactions").add({
                     "uid": st.session_state.uid,
                     "amount": float(amount),
                     "error": float(err),
-                    "fraud": bool(fraud),  # ← THIS FIXES THE ERROR
+                    "fraud": bool(fraud),
                     "timestamp": firestore.SERVER_TIMESTAMP
                 })
                 st.success("Transaction saved to history!")
@@ -259,7 +258,6 @@ if page == "Check Transaction":
             fig.update_layout(title="Risk Level", yaxis_title="Risk %", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color="white")
             st.plotly_chart(fig, use_container_width=True)
 
-            # Threshold Graph
             st.markdown("### How the AI Decides")
             x = np.linspace(0, 2, 200)
             normal_errors = np.exp(-((x - 0.3)**2) / (2 * 0.1**2)) / np.sqrt(2 * np.pi * 0.1**2)
@@ -274,18 +272,19 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: REAL-TIME STATS + HISTORY
+# 6. ADMIN DASHBOARD: USERS TABLE + HISTORY
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === USER COUNT ===
+    # === USER COUNT + STATS ===
     try:
-        total_users = len(list(auth.list_users().iterate_all()))
+        users = list(auth.list_users().iterate_all())
+        total_users = len(users)
     except:
+        users = []
         total_users = 0
 
-    # === TRANSACTION STATS ===
     try:
         snapshot = db.collection("transactions").get()
         total_checked = len(snapshot)
@@ -319,9 +318,48 @@ elif page == "Admin Dashboard":
         fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("No transactions yet. Customers will save them here.")
+        st.info("No transactions yet.")
 
-    # === HISTORY TABLE ===
+    # === REGISTERED USERS TABLE ===
+    st.markdown("### Registered Users")
+    if users:
+        user_data = []
+        for user in users:
+            reg_time = user.user_metadata.creation_timestamp
+            reg_date = datetime.fromtimestamp(reg_time / 1000).strftime("%Y-%m-%d %H:%M") if reg_time else "—"
+            user_data.append({
+                "Email": user.email,
+                "User ID": user.uid[:8] + "...",
+                "Registered": reg_date,
+                "Status": "Active"
+            })
+        df_users = pd.DataFrame(user_data)
+
+        def make_user_row(row):
+            return f"""
+            <tr>
+                <td>{row["Email"]}</td>
+                <td>{row["User ID"]}</td>
+                <td>{row["Registered"]}</td>
+                <td><span style="color:#10B981; font-weight:bold;">{row["Status"]}</span></td>
+            </tr>
+            """
+        rows_html = "".join(df_users.apply(make_user_row, axis=1))
+        users_table = f"""
+        <div class="users-table">
+        <table>
+            <thead><tr>
+                <th>Email</th><th>User ID</th><th>Registered</th><th>Status</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        </div>
+        """
+        st.markdown(users_table, unsafe_allow_html=True)
+    else:
+        st.info("No users registered yet.")
+
+    # === TRANSACTION HISTORY ===
     st.markdown("### Transaction History")
     try:
         docs = db.collection("transactions")\
