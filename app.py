@@ -1,4 +1,4 @@
-# app.py - CLEAN TABLES + FULL DATA + NO HTML VISIBLE
+# app.py - FINAL: SILENT SAVE + CLEAN TABLES + FULL DATA
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -84,7 +84,7 @@ st.markdown("""
     }
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
-    /* Hide Streamlit table HTML */
+    /* Clean table styling */
     section[data-testid="stTable"] table {
         width: 100% !important;
         border-collapse: collapse !important;
@@ -202,7 +202,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SAVE EVERY TRANSACTION
+# 5. CUSTOMER: SILENT SAVE (NO MESSAGE)
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -218,6 +218,7 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
+            # === SILENT SAVE - NO st.success() ===
             try:
                 db.collection("transactions").add({
                     "uid": st.session_state.uid,
@@ -226,7 +227,6 @@ if page == "Check Transaction":
                     "fraud": bool(fraud),
                     "timestamp": firestore.SERVER_TIMESTAMP
                 })
-                st.success("Transaction saved to history!")
             except Exception as e:
                 st.error(f"Save failed: {e}")
 
@@ -273,7 +273,7 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: CLEAN TABLES (NO HTML CODE)
+# 6. ADMIN DASHBOARD: CLEAN TABLES + FULL DATA
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
@@ -340,11 +340,7 @@ elif page == "Admin Dashboard":
                 "Status": "Active"
             })
         df_users = pd.DataFrame(user_data)
-        st.dataframe(
-            df_users,
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(df_users, use_container_width=True, hide_index=True)
     else:
         st.info("No users registered yet.")
 
@@ -370,7 +366,6 @@ elif page == "Admin Dashboard":
 
         if data:
             df = pd.DataFrame(data)
-            # Apply row styling
             def style_row(row):
                 return ['background-color: #FCA5A5' if row["Status"] == "Blocked" else 'background-color: #86EFAC' for _ in row]
             st.dataframe(
