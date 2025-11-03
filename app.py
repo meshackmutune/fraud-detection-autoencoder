@@ -28,8 +28,14 @@ st.markdown("""
 # ---------------------------------------------------------
 def init_firebase():
     if not firebase_admin._apps:
-        cred = credentials.Certificate(st.secrets["firebase"])
-        firebase_admin.initialize_app(cred)
+        try:
+            # Convert TOML section to plain dict
+            cred_dict = dict(st.secrets["firebase"])
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            st.error(f"Firebase init failed: {e}")
+            st.stop()
     if "db" not in st.session_state:
         st.session_state.db = firestore.client()
 
@@ -221,3 +227,4 @@ elif page == "Administrator Dashboard":
         st.metric("Current Threshold", f"{THRESHOLD:.3f}")
     with col_t2:
         st.metric("Proposed", f"{new_thr:.3f}", delta=f"{new_thr - THRESHOLD:+.3f}")
+
