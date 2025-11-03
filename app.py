@@ -1,4 +1,4 @@
-# app.py - FINAL: SILENT SAVE + CLEAN TABLES + FULL DATA
+# app.py - FINAL: USER-FRIENDLY LOGIN + SILENT SAVE + CLEAN UI
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -132,27 +132,36 @@ db = st.session_state.db
 def login(email, pwd):
     try:
         user = auth.get_user_by_email(email)
-        st.session_state.update(uid=user.uid, logged_in=True,
-                                is_admin=(email == "admin@securebank.com"))
+        st.session_state.update(
+            uid=user.uid,
+            email=user.email,
+            logged_in=True,
+            is_admin=(email == "admin@securebank.com")
+        )
         st.success("Logged in!")
     except:
-        st.error("Login failed.")
+        st.error("Invalid email or password.")
 
 def register(email, pwd):
     try:
         user = auth.create_user(email=email, password=pwd)
-        st.session_state.update(uid=user.uid, logged_in=True, is_admin=False)
-        st.success("Welcome!")
+        st.session_state.update(
+            uid=user.uid,
+            email=user.email,
+            logged_in=True,
+            is_admin=False
+        )
+        st.success("Account created! Welcome.")
     except:
-        st.error("Register failed.")
+        st.error("Email already in use or invalid.")
 
 def logout():
-    for k in ["uid", "logged_in", "is_admin"]:
+    for k in ["uid", "email", "logged_in", "is_admin"]:
         st.session_state.pop(k, None)
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE
+# 3. LOGIN PAGE - USER-FRIENDLY
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -172,14 +181,29 @@ if not st.session_state.get("logged_in", False):
             <h3 style="color: white; margin: 12px 0 0; font-weight: 700;">Secure Bank Portal</h3>
         </div>
         """, unsafe_allow_html=True)
-        email = st.text_input("Email", placeholder="you@securebank.com")
-        pwd = st.text_input("Password", type="password")
-        if st.button("Login"): login(email, pwd); st.rerun()
-        if st.button("Register"): register(email, pwd); st.rerun()
+
+        # === LOGIN FORM ===
+        st.markdown("### Login")
+        login_email = st.text_input("Email", placeholder="you@securebank.com", key="login_email")
+        login_pwd = st.text_input("Password", type="password", key="login_pwd")
+        if st.button("Login", use_container_width=True):
+            login(login_email, login_pwd)
+            st.rerun()
+
+        # === REGISTER PROMPT ===
+        st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
+        st.markdown("### New User?")
+        st.markdown("<p style='color: #C7D2FE; text-align:center;'>Not registered yet?</p>", unsafe_allow_html=True)
+        reg_email = st.text_input("Register Email", placeholder="your@email.com", key="reg_email")
+        reg_pwd = st.text_input("Register Password", type="password", key="reg_pwd")
+        if st.button("Register Now", use_container_width=True):
+            register(reg_email, reg_pwd)
+            st.rerun()
+
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN
+# 4. LOGGED IN - CLEAR USER IDENTITY
 # ---------------------------------------------------------
 st.sidebar.markdown("""
 <div style="text-align:center; padding:20px; background: rgba(255,255,255,0.15); border-radius: 16px; margin-bottom: 20px;">
@@ -188,13 +212,19 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# === CLEAR: LOGGED IN AS ===
 st.sidebar.markdown(f"""
-<div style="background: rgba(255,255,255,0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px;">
-    <p style="color: white; margin: 0; font-weight: 600;">User: {st.session_state.uid[:8]}...</p>
+<div style="background: rgba(16, 185, 129, 0.2); padding: 16px; border-radius: 14px; text-align: center; margin-bottom: 20px; border: 1px solid #10B981;">
+    <p style="color: white; margin: 0; font-weight: 600; font-size: 1.1rem;">
+        Logged in as:<br>
+        <b style="color: #10B981; font-size: 1.2rem;">{st.session_state.email}</b>
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
-if st.sidebar.button("Logout"): logout(); st.rerun()
+if st.sidebar.button("Logout", use_container_width=True):
+    logout()
+    st.rerun()
 
 pages = ["Check Transaction"]
 if st.session_state.get("is_admin"):
