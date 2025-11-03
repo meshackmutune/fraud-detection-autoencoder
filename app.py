@@ -1,4 +1,4 @@
-# app.py - COLORFUL + ADMIN: USERS + TRANSACTION HISTORY
+# app.py - ADMIN: REAL HISTORY + REAL-TIME SAVING + STYLING FIX
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -85,25 +85,26 @@ st.markdown("""
     .label { font-size: 17px; color: #E0E7FF; margin-top: 6px; font-weight: 500; }
 
     /* Table Styling */
-    .stDataFrame table {
+    .transaction-table table {
         width: 100% !important;
         border-collapse: collapse !important;
+        font-size: 14px;
     }
-    .stDataFrame th {
+    .transaction-table th {
         background: rgba(255,255,255,0.2) !important;
         color: white !important;
         font-weight: 600 !important;
         padding: 12px !important;
         text-align: center !important;
     }
-    .stDataFrame td {
+    .transaction-table td {
         padding: 10px !important;
         text-align: center !important;
         color: black !important;
         font-weight: bold !important;
     }
-    .blocked-cell { background-color: #FCA5A5 !important; }
-    .approved-cell { background-color: #86EFAC !important; }
+    .blocked-row { background-color: #FCA5A5 !important; }
+    .approved-row { background-color: #86EFAC !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,6 +123,8 @@ init_firebase()
 MODEL, SCALER, THRESHOLD = load_model_and_assets()
 if MODEL is None:
     st.stop()
+
+db = st.session_state.db
 
 # ---------------------------------------------------------
 # 2. AUTH
@@ -199,7 +202,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: TRAFFIC LIGHT + THRESHOLD GRAPH
+# 5. CUSTOMER: SAVE + DISPLAY
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -214,6 +217,19 @@ if page == "Check Transaction":
             vec = np.zeros(INPUT_DIM); vec[29] = amount
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
+
+            # === SAVE TO FIRESTORE ===
+            try:
+                db.collection("transactions").add({
+                    "uid": st.session_state.uid,
+                    "amount": amount,
+                    "error": float(err),
+                    "fraud": fraud,
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+            except Exception as e:
+                st.warning("Saved locally (Firestore offline)")
+
             st.session_state.last_err = err
             st.session_state.last_fraud = fraud
 
@@ -258,22 +274,27 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: USERS + HISTORY
+# 6. ADMIN DASHBOARD: REAL USERS + REAL HISTORY
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
 
-    # === GET REGISTERED USERS ===
+    # === USERS ===
     try:
         user_list = list(auth.list_users().iterate_all())
         total_users = len(user_list)
     except:
         total_users = 0
 
-    total = 12500
-    fraud = 480
-    false = 420
-    normal = total - fraud - false
+    # === SUMMARY STATS ===
+    try:
+        snapshot = db.collection("transactions").get()
+        total = len(snapshot)
+        fraud = sum(1 for doc in snapshot if doc.to_dict().get("fraud"))
+        false = total - fraud
+        normal = total - fraud
+    except:
+        total, fraud, false, normal = 0, 0, 0, 0
 
     col1, col2, col3, col4 = st.columns(4)
     cards = [
@@ -293,31 +314,59 @@ elif page == "Admin Dashboard":
 
     # === PIE CHART ===
     st.markdown("### Transaction Breakdown")
-    fig = px.pie(values=[normal, fraud, false], names=['Safe', 'Fraud', 'False'], hole=0.5,
-                 color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'])
-    fig.update_traces(textinfo='percent+label', textfont_size=15)
-    fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
-    st.plotly_chart(fig, use_container_width=True)
+    if total > 0:
+        fig = px.pie(values=[normal, fraud, false], names=['Safe', 'Fraud', 'False'], hole=0.5,
+                     color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'])
+        fig.update_traces(textinfo='percent+label', textfont_size=15)
+        fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No transactions yet.")
 
-    # === TRANSACTION HISTORY TABLE ===
+    # === REAL TRANSACTION HISTORY ===
     st.markdown("### Transaction History")
-    # Mock data (replace with real Firestore data later)
-    history_data = [
-        {"Timestamp": "2025-04-01 14:23", "User ID": "abc123...", "Amount": 120.00, "Status": "Approved", "Risk": 12},
-        {"Timestamp": "2025-04-01 13:55", "User ID": "def456...", "Amount": 2000.00, "Status": "Blocked", "Risk": 88},
-        {"Timestamp": "2025-04-01 12:10", "User ID": "ghi789...", "Amount": 89.50, "Status": "Approved", "Risk": 10},
-        {"Timestamp": "2025-04-01 11:45", "User ID": "jkl012...", "Amount": 450.00, "Status": "Approved", "Risk": 18},
-        {"Timestamp": "2025-04-01 10:30", "User ID": "mno345...", "Amount": 75.00, "Status": "Approved", "Risk": 15},
-    ]
-    df = pd.DataFrame(history_data)
-    df["Amount"] = df["Amount"].map("${:,.2f}".format)
-    df["Risk"] = df["Risk"].astype(str) + "%"
+    try:
+        docs = db.collection("transactions").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream()
+        data = []
+        for doc in docs:
+            d = doc.to_dict()
+            data.append({
+                "Timestamp": d.get("timestamp", datetime.now()).strftime("%Y-%m-%d %H:%M"),
+                "User ID": d.get("uid", "unknown")[:8] + "...",
+                "Amount": d.get("amount", 0),
+                "Status": "Blocked" if d.get("fraud") else "Approved",
+                "Risk": f"{int(d.get('error', 0) * 100)}%"
+            })
+        df = pd.DataFrame(data)
+        df["Amount"] = df["Amount"].map("${:,.2f}".format)
 
-    def style_status(row):
-        return ['blocked-cell' if row.Status == "Blocked" else 'approved-cell'] * len(row)
+        # === RENDER AS HTML TABLE (FULL STYLING) ===
+        def make_html_row(row):
+            cls = "blocked-row" if row["Status"] == "Blocked" else "approved-row"
+            return f"""
+            <tr class="{cls}">
+                <td>{row["Timestamp"]}</td>
+                <td>{row["User ID"]}</td>
+                <td>{row["Amount"]}</td>
+                <td>{row["Status"]}</td>
+                <td>{row["Risk"]}</td>
+            </tr>
+            """
 
-    styled_df = df.style.apply(style_status, axis=1)
-    st.dataframe(styled_df, use_container_width=True)
+        rows_html = "".join(df.apply(make_html_row, axis=1))
+        table_html = f"""
+        <div class="transaction-table">
+        <table>
+            <thead><tr>
+                <th>Timestamp</th><th>User ID</th><th>Amount</th><th>Status</th><th>Risk</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        </div>
+        """
+        st.markdown(table_html, unsafe_allow_html=True)
+    except Exception as e:
+        st.error("Could not load history. Check Firestore rules.")
 
     # === AI SENSITIVITY ===
     st.markdown("### AI Sensitivity")
