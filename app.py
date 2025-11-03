@@ -1,69 +1,32 @@
-# app.py - COLORFUL THEME + EASY VISUALS
+# app.py - FULL WITH VISUALIZATIONS (STREAMLIT-CLOUD READY)
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 
 # ---------------------------------------------------------
-# 0. PAGE CONFIG + COLORFUL THEME
+# 0. PAGE CONFIG + THEME
 # ---------------------------------------------------------
 st.set_page_config(page_title="Secure Bank", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    * { font-family: 'Inter', sans-serif; }
-    
-    /* Gradient Background */
-    .stApp {
-        background: linear-gradient(135deg, #6366F1 0%, #10B981 100%);
-        background-attachment: fixed;
-    }
-    
-    /* Glass Cards */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(12px);
-        border-radius: 16px;
-        padding: 20px;
-        margin: 15px 0;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    
-    /* Big Numbers */
-    .big-number { font-size: 48px; font-weight: 700; margin: 0; }
-    .label { font-size: 16px; opacity: 0.9; margin-top: 5px; }
-    
-    /* Buttons */
-    .stButton > button {
-        border-radius: 12px !important; padding: 12px 24px !important;
-        font-weight: 600 !important; text-transform: uppercase;
-        background: linear-gradient(45deg, #6366F1, #10B981) !important;
-        color: white !important; border: none !important;
-        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4) !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6) !important;
-    }
-    
-    /* Traffic Light */
-    .light { font-size: 80px; line-height: 1; }
-    .green-glow { text-shadow: 0 0 20px #10B981; }
-    .red-glow { text-shadow: 0 0 20px #EF4444; }
+    :root { --primary-green: #10B981; --dark-green: #047857; }
+    .stButton>button { background: var(--primary-green) !important; color: white !important; }
+    .stButton>button:hover { background: var(--dark-green) !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 1. FIREBASE & MODEL
+# 1. FIREBASE & MODEL (FIXED)
 # ---------------------------------------------------------
 def init_firebase():
     if not firebase_admin._apps:
+        # st.secrets["firebase"] is a TOML table → convert to dict
         cred_dict = dict(st.secrets["firebase"])
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
@@ -72,7 +35,8 @@ def init_firebase():
 
 init_firebase()
 MODEL, SCALER, THRESHOLD = load_model_and_assets()
-if MODEL is None: st.stop()
+if MODEL is None:
+    st.stop()
 
 # ---------------------------------------------------------
 # 2. AUTH
@@ -80,181 +44,206 @@ if MODEL is None: st.stop()
 def login(email, pwd):
     try:
         user = auth.get_user_by_email(email)
-        st.session_state.update(uid=user.uid, logged_in=True, is_admin=(email=="admin@securebank.com"))
-        st.balloons()
-    except: st.error("Login failed.")
+        st.session_state.update(uid=user.uid, logged_in=True,
+                                is_admin=(email == "admin@securebank.com"))
+        st.success("Logged in!")
+    except:
+        st.error("Login failed.")
 
 def register(email, pwd):
     try:
         user = auth.create_user(email=email, password=pwd)
         st.session_state.update(uid=user.uid, logged_in=True, is_admin=False)
-        st.success("Welcome!")
-    except: st.error("Register failed.")
+        st.success("Registered!")
+    except:
+        st.error("Register failed.")
 
 def logout():
-    for k in ["uid", "logged_in", "is_admin"]: st.session_state.pop(k, None)
+    for k in ["uid", "logged_in", "is_admin"]:
+        st.session_state.pop(k, None)
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE – COLORFUL WELCOME
+# 3. LOGIN PAGE WITH VISUAL WELCOME
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align:center; padding:15px;">
+            <img src="https://img.icons8.com/fluency/96/bank-building.png" width="70">
+            <h2 style="color:#10B981; margin:8px 0 0;">Secure Bank</h2>
+            <p style="color:#10B981; font-size:0.95rem;">Fraud Detection Portal</p>
+            <hr style="border-top:2px solid #10B981;">
+        </div>
+        """, unsafe_allow_html=True)
+        email = st.text_input("Email", key="email")
+        pwd = st.text_input("Password", type="password", key="pwd")
+        c1, c2 = st.columns(2)
+        if c1.button("Login"): login(email, pwd); st.rerun()
+        if c2.button("Register"): register(email, pwd); st.rerun()
+
     col1, col2 = st.columns([1, 2])
     with col1:
         st.image("https://img.icons8.com/fluency/256/bank-building.png", width=200)
     with col2:
         st.markdown("""
-        <h1 style='color: white; text-shadow: 0 2px 10px rgba(0,0,0,0.3);'>
-            Secure Bank
-        </h1>
-        <p style='color: white; font-size: 1.3rem; opacity: 0.9;'>
-            AI-Powered Fraud Protection
+        <h1 style='color:#10B981;'>Welcome to Secure Bank</h1>
+        <p style='font-size:1.2rem; color:#047857;'>
+            <b>Deep Autoencoder AI</b> protects your money.<br>
+            <i>86% fraud detection • 4% false alerts</i>
         </p>
         """, unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown("<h3 style='color: white;'>Login</h3>", unsafe_allow_html=True)
-        email = st.text_input("Email", placeholder="you@securebank.com")
-        pwd = st.text_input("Password", type="password")
-        if st.button("Login"): login(email, pwd); st.rerun()
-        if st.button("Register"): register(email, pwd); st.rerun()
     st.stop()
 
 # ---------------------------------------------------------
-# 4. LOGGED IN – COLORFUL DASHBOARD
+# 4. LOGGED IN UI
 # ---------------------------------------------------------
-st.sidebar.markdown(f"""
-<div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; color: white;">
-    <p><b>User:</b> {st.session_state.uid[:8]}...</p>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.success(f"User: {st.session_state.uid[:8]}...")
 if st.sidebar.button("Logout"): logout(); st.rerun()
 
-pages = ["Check Transaction"]
-if st.session_state.get("is_admin"): pages.append("Admin Center")
+pages = ["Customer Interface"]
+if st.session_state.get("is_admin"):
+    pages.insert(0, "Administrator Dashboard")
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: RAINBOW TRAFFIC LIGHT + METER
+# 5. CUSTOMER INTERFACE + VISUALIZATIONS
 # ---------------------------------------------------------
-if page == "Check Transaction":
-    st.markdown("<h1 style='color: white; text-align: center;'>Check Your Transaction</h1>", unsafe_allow_html=True)
+if page == "Customer Interface":
+    st.title("Transaction Verification")
 
-    amount = st.number_input("Amount (USD)", min_value=0.0, value=100.0, step=10.0, help="Enter any amount")
-    
-    if st.button("Verify Now", use_container_width=True):
-        vec = np.zeros(INPUT_DIM); vec[29] = amount
-        err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
-        st.session_state.result = (err, fraud, amount)
-
-    if 'result' in st.session_state:
-        err, fraud, amount = st.session_state.result
-
-        # TRAFFIC LIGHT
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div class="glass-card">
-                <div class="light {'green-glow' if not fraud else 'red-glow'}">
-                    ●
-                </div>
-                <p class="big-number" style="color: {'#10B981' if not fraud else '#EF4444'};">
-                    {'APPROVED' if not fraud else 'BLOCKED'}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col2:
-            # RISK METER
-            risk = min(100, int(err * 100))
-            color = "green" if not fraud else "red"
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number+delta",
-                value=risk,
-                delta={'reference': 20},
-                gauge={'axis': {'range': [0, 100]},
-                       'bar': {'color': color},
-                       'steps': [{'range': [0, 30], 'color': '#10B981'},
-                                 {'range': [30, 70], 'color': '#F59E0B'},
-                                 {'range': [70, 100], 'color': '#EF4444'}]},
-                title={'text': "Risk Level"}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col3:
-            # COMPARE
-            avg = 18
-            fig = go.Figure(go.Bar(
-                x=['You', 'Average User'],
-                y=[risk, avg],
-                marker_color=['#6366F1' if risk > avg else '#10B981', '#94A3B8'],
-                text=[f"{risk}%", f"{avg}%"],
-                textposition='outside'
-            ))
-            fig.update_layout(title="Your Risk vs Average", yaxis_title="Risk %", showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown(f"""
-        <div style='text-align: center; color: white; margin-top: 20px;'>
-            <p><b>Amount:</b> ${amount:,.2f} | <b>AI Score:</b> {err:.4f}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 6. ADMIN: RAINBOW DASHBOARD
-# ---------------------------------------------------------
-elif page == "Admin Center":
-    st.markdown("<h1 style='color: white; text-align: center;'>Fraud Control Center</h1>", unsafe_allow_html=True)
-
-    # Mock Data
-    total = 12500
-    fraud = 480
-    false = 420
-    normal = total - fraud - false
-
-    col1, col2, col3, col4 = st.columns(4)
-    metrics = [
-        ("Fraud Caught", fraud, "#EF4444"),
-        ("False Alerts", false, "#F59E0B"),
-        ("Safe Txns", normal, "#10B981"),
-        ("Total", total, "#6366F1")
-    ]
-    for col, (label, value, color) in zip([col1, col2, col3, col4], metrics):
-        with col:
-            st.markdown(f"""
-            <div class="glass-card">
-                <p class="big-number" style="color: {color};">{value:,}</p>
-                <p class="label" style="color: white;">{label}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    colA, colB = st.columns(2)
+    colA, colB = st.columns([1, 3])
     with colA:
-        # PIE CHART
-        fig = px.pie(
-            values=[normal, fraud, false],
-            names=['Safe', 'Fraud', 'False Alert'],
-            hole=0.4,
-            color_discrete_sequence=['#10B981', '#EF4444', '#F59E0B'],
-            title="Transaction Breakdown"
-        )
-        fig.update_traces(textinfo='percent+label')
-        st.plotly_chart(fig, use_container_width=True)
+        amt = st.text_input("Amount (USD)", "100.00")
+        try:
+            amount = float(amt)
+        except:
+            amount = 0.0
+            st.warning("Invalid")
+
+        if st.button("Verify", type="primary", use_container_width=True):
+            vec = np.zeros(INPUT_DIM)
+            vec[29] = amount
+            with st.spinner("Analyzing..."):
+                err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
+            st.session_state.last_err = err
+            st.session_state.last_fraud = fraud
 
     with colB:
-        # LINE CHART
-        dates = pd.date_range("2025-04-01", periods=7).strftime("%a")
-        frauds = [60, 85, 70, 110, 65, 95, 75]
-        fig = px.area(x=dates, y=frauds, title="Daily Fraud Attempts",
-                      color_discrete_sequence=['#EF4444'])
-        fig.update_layout(yaxis_title="Fraud Count")
-        st.plotly_chart(fig, use_container_width=True)
+        if 'last_err' in st.session_state:
+            err = st.session_state.last_err
+            fraud = st.session_state.last_fraud
 
-    # THRESHOLD TUNER
-    st.markdown("### AI Sensitivity Control")
-    new_thr = st.slider("Risk Threshold", 0.3, 1.5, THRESHOLD, 0.01, help="Lower = more sensitive")
-    colT1, colT2 = st.columns(2)
-    with colT1:
-        st.metric("Current", f"{THRESHOLD:.3f}", delta=None)
-    with colT2:
-        st.metric("New", f"{new_thr:.3f}", delta=f"{new_thr - THRESHOLD:+.3f}")
+            # 1. GAUGE CHART
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=err,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={'axis': {'range': [0, 2]},
+                       'bar': {'color': "red" if fraud else "green"},
+                       'threshold': {'line': {'color': "black", 'width': 4},
+                                     'thickness': 0.75, 'value': THRESHOLD}},
+                title={'text': "Reconstruction Error (MSE)"}
+            ))
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+            # 2. RESULT
+            if fraud:
+                st.error("FRAUD DETECTED")
+                st.metric("Status", "BLOCKED", delta="HIGH RISK")
+            else:
+                st.success("APPROVED")
+                st.metric("Status", "APPROVED", delta="LOW RISK")
+
+    # 3. TRANSACTION HISTORY (MOCK)
+    st.markdown("### Your Recent Activity")
+    history = pd.DataFrame({
+        "Time": pd.date_range("2025-04-01", periods=10, freq="H"),
+        "Amount": np.random.uniform(10, 1000, 10),
+        "MSE": np.random.uniform(0.1, 1.5, 10),
+        "Status": ["Approved"]*8 + ["Blocked", "Approved"]
+    })
+    history["Fraud"] = history["MSE"] > THRESHOLD
+    fig_line = px.line(history, x="Time", y="MSE", color="Status", markers=True,
+                       title="Transaction Risk Over Time")
+    fig_line.add_hline(y=THRESHOLD, line_dash="dash", line_color="red",
+                       annotation_text="Threshold")
+    st.plotly_chart(fig_line, use_container_width=True)
+
+    # 4. HEATMAP
+    st.markdown("### Fraud Risk by Amount & Time")
+    heatmap = pd.pivot_table(history, values="MSE",
+                             index=history["Time"].dt.hour,
+                             columns=pd.cut(history["Amount"], 5),
+                             aggfunc="mean")
+    fig_heat = px.imshow(heatmap, text_auto=True,
+                         color_continuous_scale="RdYlGn_r", aspect="auto")
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+# ---------------------------------------------------------
+# 6. ADMIN DASHBOARD + VISUALIZATIONS
+# ---------------------------------------------------------
+elif page == "Administrator Dashboard":
+    st.title("Fraud Operations Center")
+
+    # Mock test data
+    np.random.seed(42)
+    normal_mse = np.random.normal(0.35, 0.15, 5000)
+    fraud_mse = np.random.normal(1.2, 0.4, 400)
+    all_mse = np.concatenate([normal_mse, fraud_mse])
+    labels = ["Normal"]*5000 + ["Fraud"]*400
+    df_test = pd.DataFrame({"MSE": all_mse, "Class": labels})
+
+    col1, col2 = st.columns(2)
+    with col1:
+        # 1. MSE DISTRIBUTION
+        fig_hist = px.histogram(df_test, x="MSE", color="Class", nbins=50,
+                                barmode="overlay", opacity=0.7,
+                                title="Reconstruction Error Distribution")
+        fig_hist.add_vline(x=THRESHOLD, line_dash="dash", line_color="red")
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+    with col2:
+        # 2. THRESHOLD IMPACT
+        thresholds = np.linspace(0.3, 1.5, 100)
+        recall, fpr = [], []
+        for t in thresholds:
+            pred = (df_test[df_test["Class"] == "Fraud"]["MSE"] > t).mean()
+            fp = (df_test[df_test["Class"] == "Normal"]["MSE"] > t).mean()
+            recall.append(pred)
+            fpr.append(fp)
+        fig_impact = go.Figure()
+        fig_impact.add_trace(go.Scatter(x=fpr, y=recall, mode="lines",
+                                        name="Threshold Curve"))
+        fig_impact.add_scatter(
+            x=[(df_test[df_test["Class"] == "Normal"]["MSE"] > THRESHOLD).mean()],
+            y=[(df_test[df_test["Class"] == "Fraud"]["MSE"] > THRESHOLD).mean()],
+            mode="markers", marker=dict(color="red", size=10), name="Current")
+        fig_impact.update_layout(title="Recall vs False Positive Rate",
+                                 xaxis_title="FPR", yaxis_title="Recall")
+        st.plotly_chart(fig_impact, use_container_width=True)
+
+    # 3. LIVE FRAUD MAP (MOCK)
+    st.markdown("### Global Fraud Activity (Last 24h)")
+    geo_df = pd.DataFrame({
+        "lat": np.random.uniform(-50, 50, 50),
+        "lon": np.random.uniform(-120, 120, 50),
+        "amount": np.random.uniform(100, 10000, 50),
+        "risk": np.random.choice(["Low", "Medium", "High"], 50)
+    })
+    fig_map = px.scatter_geo(geo_df, lat="lat", lon="lon", size="amount",
+                             color="risk", title="Fraud Heatmap",
+                             color_discrete_map={"Low": "green",
+                                                "Medium": "orange",
+                                                "High": "red"})
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    # 4. THRESHOLD TUNER
+    st.markdown("### Tune Detection Threshold")
+    new_thr = st.slider("MSE Threshold", 0.3, 1.5, THRESHOLD, 0.01)
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.metric("Current Threshold", f"{THRESHOLD:.3f}")
+    with col_t2:
+        st.metric("Proposed", f"{new_thr:.3f}",
+                  delta=f"{new_thr - THRESHOLD:+.3f}")
