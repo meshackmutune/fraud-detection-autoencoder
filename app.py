@@ -1,4 +1,4 @@
-# app.py - FINAL: "INVALID USER" MESSAGE + REGISTER LINK + CONFIRM PASSWORD
+# app.py - FINAL: RED "INVALID USER" UNDER LOGIN BUTTON + REGISTER LINK
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -119,6 +119,19 @@ st.markdown("""
     .register-link a:hover {
         text-decoration: underline;
     }
+
+    /* RED INVALID USER MESSAGE UNDER LOGIN BUTTON */
+    .invalid-user-msg {
+        color: #FECACA !important;
+        background: rgba(239,68,68,0.2);
+        padding: 10px 16px;
+        border-radius: 10px;
+        text-align: center;
+        margin: 10px 0 0 0;
+        font-weight: 600;
+        font-size: 0.95rem;
+        border: 1px solid #EF4444;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -181,7 +194,7 @@ def logout():
     st.success("Logged out.")
 
 # ---------------------------------------------------------
-# 3. LOGIN PAGE - "INVALID USER" FOR NEW USERS
+# 3. LOGIN PAGE - RED "INVALID USER" UNDER LOGIN BUTTON
 # ---------------------------------------------------------
 if not st.session_state.get("logged_in", False):
     col1, col2 = st.columns([1, 2])
@@ -207,32 +220,28 @@ if not st.session_state.get("logged_in", False):
         login_email = st.text_input("Email", placeholder="you@securebank.com", key="login_email")
         login_pwd = st.text_input("Password", type="password", key="login_pwd")
 
-        # === CHECK IF EMAIL EXISTS ON LOGIN CLICK ===
+        # === LOGIN BUTTON ===
         if st.button("Login", use_container_width=True):
             if not login_email or not login_pwd:
                 st.error("Please fill in both fields.")
             else:
                 try:
-                    # This will raise if user doesn't exist
                     auth.get_user_by_email(login_email)
                     login(login_email, login_pwd)
                 except:
                     st.session_state.invalid_user = True
                     st.session_state.show_register = True
-                    st.error("Invalid user. Please register.")
             st.rerun()
 
-        # === SHOW "INVALID USER" MESSAGE IF FLAGGED ===
+        # === RED "INVALID USER" MESSAGE UNDER LOGIN BUTTON ===
         if st.session_state.get("invalid_user", False):
             st.markdown("""
-            <div style="background: rgba(239,68,68,0.2); padding: 12px; border-radius: 12px; text-align: center; margin: 10px 0; border: 1px solid #EF4444;">
-                <p style="color: #FECACA; margin: 0; font-weight: 600;">
-                    Invalid user. Please register.
-                </p>
+            <div class="invalid-user-msg">
+                Invalid user. Please register.
             </div>
             """, unsafe_allow_html=True)
 
-        # === "REGISTER HERE" LINK BELOW LOGIN ===
+        # === "REGISTER HERE" LINK BELOW MESSAGE ===
         st.markdown("""
         <div class="register-link">
             Not registered? 
