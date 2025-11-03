@@ -1,4 +1,4 @@
-# app.py - ADMIN DASHBOARD: REAL STATS + HISTORY + NO ERRORS
+# app.py - CUSTOMER SAVES → ADMIN SEES INSTANTLY
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -201,7 +201,7 @@ if st.session_state.get("is_admin"):
 page = st.sidebar.radio("Menu", pages)
 
 # ---------------------------------------------------------
-# 5. CUSTOMER: SAVE ONLY IF ADMIN
+# 5. CUSTOMER: SAVE EVERY TRANSACTION
 # ---------------------------------------------------------
 if page == "Check Transaction":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Check Your Transaction</h1>", unsafe_allow_html=True)
@@ -217,21 +217,18 @@ if page == "Check Transaction":
             with st.spinner("AI is scanning..."):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # === SAVE ONLY IF ADMIN ===
-            if st.session_state.get("is_admin"):
-                try:
-                    db.collection("transactions").add({
-                        "uid": st.session_state.uid,
-                        "amount": amount,
-                        "error": float(err),
-                        "fraud": fraud,
-                        "timestamp": firestore.SERVER_TIMESTAMP
-                    })
-                    st.success("Transaction saved.")
-                except Exception as e:
-                    st.error("Failed to save. Check Firestore.")
-            else:
-                st.info("Transaction checked (not saved — admin only).")
+            # === SAVE FOR ALL USERS ===
+            try:
+                db.collection("transactions").add({
+                    "uid": st.session_state.uid,
+                    "amount": amount,
+                    "error": float(err),
+                    "fraud": fraud,
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                st.success("Transaction saved to history!")
+            except Exception as e:
+                st.error(f"Save failed: {e}")
 
             st.session_state.last_err = err
             st.session_state.last_fraud = fraud
@@ -277,7 +274,7 @@ if page == "Check Transaction":
             st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------------------------------------------------
-# 6. ADMIN DASHBOARD: REAL STATS + HISTORY
+# 6. ADMIN DASHBOARD: REAL-TIME STATS + HISTORY
 # ---------------------------------------------------------
 elif page == "Admin Dashboard":
     st.markdown("<h1 style='color: white; text-align: center; font-weight: 700;'>Fraud Control Center</h1>", unsafe_allow_html=True)
@@ -290,9 +287,9 @@ elif page == "Admin Dashboard":
 
     # === TRANSACTION STATS ===
     try:
-        docs = db.collection("transactions").get()
-        total_checked = len(docs)
-        fraud_count = sum(1 for doc in docs if doc.to_dict().get("fraud"))
+        snapshot = db.collection("transactions").get()
+        total_checked = len(snapshot)
+        fraud_count = sum(1 for doc in snapshot if doc.to_dict().get("fraud", False))
         safe_count = total_checked - fraud_count
     except:
         total_checked = fraud_count = safe_count = 0
@@ -300,7 +297,7 @@ elif page == "Admin Dashboard":
     col1, col2, col3, col4 = st.columns(4)
     cards = [
         ("Fraud Caught", fraud_count, "#EF4444"),
-        ("False Alerts", 0, "#F59E0B"),  # Not tracked
+        ("False Alerts", 0, "#F59E0B"),
         ("Total Checked", total_checked, "#0EA5E9"),
         ("Registered Users", total_users, "#8B5CF6")
     ]
@@ -322,27 +319,28 @@ elif page == "Admin Dashboard":
         fig.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("No transactions yet.")
+        st.info("No transactions yet. Customers will save them here.")
 
-    # === TRANSACTION HISTORY ===
+    # === HISTORY TABLE ===
     st.markdown("### Transaction History")
     try:
-        docs = db.collection("transactions").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(50).stream()
+        docs = db.collection("transactions")\
+                 .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                 .limit(50).stream()
         data = []
         for doc in docs:
             d = doc.to_dict()
             ts = d.get("timestamp")
-            timestamp_str = ts.strftime("%Y-%m-%d %H:%M") if ts else "Unknown"
+            timestamp_str = ts.strftime("%Y-%m-%d %H:%M") if ts else "—"
             data.append({
                 "Timestamp": timestamp_str,
-                "User ID": d.get("uid", "unknown")[:8] + "...",
-                "Amount": d.get("amount", 0),
+                "User ID": d.get("uid", "—")[:8] + "...",
+                "Amount": f"${d.get('amount', 0):,.2f}",
                 "Status": "Blocked" if d.get("fraud") else "Approved",
                 "Risk": f"{int(d.get('error', 0) * 100)}%"
             })
         if data:
             df = pd.DataFrame(data)
-            df["Amount"] = df["Amount"].map("${:,.2f}".format)
 
             def make_row(row):
                 cls = "blocked-row" if row["Status"] == "Blocked" else "approved-row"
@@ -368,9 +366,9 @@ elif page == "Admin Dashboard":
             """
             st.markdown(table, unsafe_allow_html=True)
         else:
-            st.info("No transaction history.")
+            st.info("No transaction history yet.")
     except Exception as e:
-        st.error(f"Firestore error: {str(e)}")
+        st.error(f"Firestore error: {e}")
 
     # === AI SENSITIVITY ===
     st.markdown("### AI Sensitivity")
