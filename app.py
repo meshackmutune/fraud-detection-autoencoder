@@ -334,6 +334,7 @@ if page == "Check Transaction":
 
     with colB:
         if 'last_err' in st.session_state:
+            err = st.session_state.last_err 
             fraud = st.session_state.last_fraud
             status = "BLOCKED" if fraud else "SAFE"
             light_class = "red-light" if fraud else "green-light"
@@ -480,3 +481,4 @@ elif page == "Admin Dashboard":
         New: <b style="color: #0EA5E9;">{new_thr:.2f}</b>
     </div>
     """, unsafe_allow_html=True)
+
