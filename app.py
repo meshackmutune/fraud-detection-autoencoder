@@ -1012,29 +1012,39 @@ def render_user_dashboard():
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.markdown("### Recent Transactions")
         try:
+            # Avoid composite index by ordering on timestamp only (auto-indexed),
+            # then filtering by uid in Python.
             docs = (
                 db.collection("transactions")
-                .where("uid", "==", st.session_state.uid)
                 .order_by("timestamp", direction=firestore.Query.DESCENDING)
-                .limit(15)
+                .limit(200)
                 .stream()
             )
             rows = []
             for doc in docs:
                 d = doc.to_dict()
+                if d.get("uid") != st.session_state.uid:
+                    continue
                 ts = d.get("timestamp")
                 rows.append({
                     "Time":   ts.strftime("%H:%M") if ts else "—",
                     "Amount": f"${d.get('amount', 0):,.2f}",
                     "Status": "🔴 Blocked" if d.get("fraud") else "🟢 Safe",
-                    "Risk":   f"{int(d.get('error', 0) * 100)}%",
+                    "Risk":   f"{int(float(d.get('error', 0)) * 100)}%",
                 })
+                if len(rows) == 15:
+                    break
             if rows:
                 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
             else:
                 st.markdown('<p style="color:var(--text-muted);font-size:0.88rem;text-align:center;padding:24px 0;">No transactions yet.</p>', unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Firestore error: {e}")
+            st.markdown(
+                '<p style="color:var(--text-muted);font-size:0.85rem;padding:12px 0;">' +
+                '⚠️ Could not load history. Please try again shortly.</p>',
+                unsafe_allow_html=True,
+            )
+            print(f"[Firestore] recent transactions error: {e}")
         st.markdown("</div>", unsafe_allow_html=True)
 
 
