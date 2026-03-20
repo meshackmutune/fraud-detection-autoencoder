@@ -1285,22 +1285,22 @@ def render_user_dashboard():
                     y=[risk_pct, 12, 84],
                     marker_color=[
                         "#FF4D4D" if fraud else "#00D4AA",
-                        "#00D4AA44",
-                        "#FF4D4D44",
+                        "rgba(0,212,170,0.3)",
+                        "rgba(255,77,77,0.3)",
                     ],
-                    marker_line_width=0,
                     text=[f"{risk_pct}%", "12%", "84%"],
                     textposition="outside",
-                    textfont=dict(color="white", size=11),
                 ))
+                fig_bar.update_traces(textfont=dict(color="white"), textfont_size=11)
                 fig_bar.update_layout(
                     title=dict(text="Risk Score Benchmark", font=dict(size=13, color="white")),
-                    yaxis=dict(title="Risk %", range=[0, 115], gridcolor="rgba(255,255,255,0.06)",
+                    yaxis=dict(title="Risk %", range=[0, 115],
+                               gridcolor="rgba(255,255,255,0.06)",
                                tickfont=dict(color="#8A9BC2")),
                     xaxis=dict(tickfont=dict(color="#8A9BC2"), tickangle=0),
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
-                    font_color="white",
+                    font=dict(color="white"),
                     margin=dict(t=44, b=8, l=8, r=8),
                     bargap=0.35,
                     height=280,
@@ -1346,7 +1346,7 @@ def render_user_dashboard():
                                gridcolor="rgba(255,255,255,0.06)"),
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
-                    font_color="white",
+                    font=dict(color="white"),
                     legend=dict(bgcolor="rgba(255,255,255,0.05)", font=dict(size=10),
                                 bordercolor="rgba(255,255,255,0.08)", borderwidth=1),
                     margin=dict(t=44, b=8, l=8, r=8),
@@ -1500,7 +1500,7 @@ def render_admin_dashboard():
         )
         fig.update_traces(textinfo="percent+label", textfont_size=14)
         fig.update_layout(
-            font_color="white",
+            font=dict(color="white"),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             title="Transaction Breakdown",
