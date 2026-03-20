@@ -3,7 +3,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+import plotly.graph_objects as pgo
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
@@ -1280,7 +1280,7 @@ def render_user_dashboard():
             ch1, ch2 = st.columns(2)
 
             with ch1:
-                fig_bar = go.Figure(go.Bar(
+                fig_bar = pgo.Figure(pgo.Bar(
                     x=["This Transaction", "Typical Safe", "Typical Fraud"],
                     y=[risk_pct, 12, 84],
                     marker_color=[
@@ -1314,14 +1314,14 @@ def render_user_dashboard():
                 fraud_d    = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
                               / np.sqrt(2*np.pi*0.3**2) * 0.3).tolist()
 
-                fig_dist = go.Figure()
-                fig_dist.add_trace(go.Scatter(
+                fig_dist = pgo.Figure()
+                fig_dist.add_trace(pgo.Scatter(
                     x=x_vals, y=normal_d, fill="tozeroy",
                     fillcolor="rgba(0,212,170,0.18)",
                     line=dict(color="rgba(0,212,170,0.7)", width=1.5),
                     name="Normal",
                 ))
-                fig_dist.add_trace(go.Scatter(
+                fig_dist.add_trace(pgo.Scatter(
                     x=x_vals, y=fraud_d, fill="tozeroy",
                     fillcolor="rgba(255,77,77,0.18)",
                     line=dict(color="rgba(255,77,77,0.7)", width=1.5),
@@ -1332,7 +1332,7 @@ def render_user_dashboard():
                     annotation_text=f"Threshold", annotation_font_color="#FFB700",
                     annotation_font_size=10, annotation_position="top right",
                 )
-                fig_dist.add_trace(go.Scatter(
+                fig_dist.add_trace(pgo.Scatter(
                     x=[float(err)], y=[0], mode="markers",
                     marker=dict(size=12, color=accent_color, symbol="diamond",
                                 line=dict(color="white", width=1.5)),
