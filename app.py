@@ -1201,14 +1201,23 @@ def render_user_dashboard():
             amount   = float(r["amount"])
             risk_pct = int(min(100, err * 100))
 
-            accent_color = "#FF4D4D" if fraud else "#00D4AA"
-            bg_color     = "rgba(255,77,77,0.08)"  if fraud else "rgba(0,212,170,0.08)"
-            border_color = "rgba(255,77,77,0.3)"   if fraud else "rgba(0,212,170,0.3)"
-            icon         = "⛔" if fraud else "✅"
-            verdict      = "TRANSACTION BLOCKED" if fraud else "TRANSACTION APPROVED"
-            sub_msg      = ("This payment exhibits characteristics consistent with fraudulent activity. "
-                            "It has been flagged and blocked for your protection.")  if fraud else                            ("This payment has been assessed by our AI engine and cleared as legitimate. "
-                            "No suspicious activity detected.")
+            accent_color  = "#FF4D4D" if fraud else "#00D4AA"
+            bg_color      = "rgba(255,77,77,0.08)"  if fraud else "rgba(0,212,170,0.08)"
+            border_color  = "rgba(255,77,77,0.3)"   if fraud else "rgba(0,212,170,0.3)"
+            icon_bg_color = "rgba(255,77,77,0.13)"  if fraud else "rgba(0,212,170,0.13)"
+            icon_bd_color = "rgba(255,77,77,0.35)"  if fraud else "rgba(0,212,170,0.35)"
+            bar_grad_end  = "rgba(255,77,77,0.6)"   if fraud else "rgba(0,212,170,0.6)"
+            icon          = "⛔" if fraud else "✅"
+            verdict       = "TRANSACTION BLOCKED" if fraud else "TRANSACTION APPROVED"
+            sub_msg       = (
+                "This payment exhibits characteristics consistent with fraudulent activity. "
+                "It has been flagged and blocked for your protection."
+            ) if fraud else (
+                "This payment has been assessed by our AI engine and cleared as legitimate. "
+                "No suspicious activity detected."
+            )
+            amount_fmt    = f"${amount:,.2f}"
+            err_fmt       = f"{err:.4f}"
 
             st.markdown(f"""
             <div style="background:{bg_color};border:1.5px solid {border_color};
@@ -1216,9 +1225,9 @@ def render_user_dashboard():
 
                 <div style="display:flex;align-items:flex-start;gap:20px;">
                     <div style="width:64px;height:64px;border-radius:16px;flex-shrink:0;
-                                background:{accent_color}22;display:flex;
+                                background:{icon_bg_color};display:flex;
                                 align-items:center;justify-content:center;font-size:1.8rem;
-                                border:1.5px solid {accent_color}55;">
+                                border:1.5px solid {icon_bd_color};">
                         {icon}
                     </div>
                     <div style="flex:1;">
@@ -1242,7 +1251,7 @@ def render_user_dashboard():
                             border-top:1px solid {border_color};">
                     <div style="text-align:center;">
                         <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
-                                    font-weight:700;color:{accent_color};">${amount:,.2f}</div>
+                                    font-weight:700;color:{accent_color};">{amount_fmt}</div>
                         <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
                                     text-transform:uppercase;letter-spacing:0.5px;">Amount</div>
                     </div>
@@ -1254,7 +1263,7 @@ def render_user_dashboard():
                     </div>
                     <div style="text-align:center;">
                         <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
-                                    font-weight:700;color:{accent_color};">{err:.4f}</div>
+                                    font-weight:700;color:{accent_color};">{err_fmt}</div>
                         <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
                                     text-transform:uppercase;letter-spacing:0.5px;">Error Score</div>
                     </div>
@@ -1269,7 +1278,7 @@ def render_user_dashboard():
                     <div style="height:8px;background:rgba(255,255,255,0.08);
                                 border-radius:100px;overflow:hidden;">
                         <div style="height:100%;width:{risk_pct}%;
-                                    background:linear-gradient(90deg,{accent_color},{accent_color}99);
+                                    background:linear-gradient(90deg,{accent_color},{bar_grad_end});
                                     border-radius:100px;transition:width 0.6s ease;"></div>
                     </div>
                 </div>
