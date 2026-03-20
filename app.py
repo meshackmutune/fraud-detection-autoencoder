@@ -324,8 +324,8 @@ div[data-testid="stButton-primary"] > button,
     from { box-shadow: 0 0 25px currentColor; }
     to   { box-shadow: 0 0 55px currentColor, 0 0 80px rgba(0,0,0,0.3); }
 }
-.result-status-safe  { font-family:'Playfair Display',serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
-.result-status-fraud { font-family:'Playfair Display',serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--red); }
+.result-status-safe  { font-family:&quot;Playfair Display&quot;,serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
+.result-status-fraud { font-family:&quot;Playfair Display&quot;,serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--red); }
 
 /* ---- admin table ---- */
 .users-table { width: 100%; border-collapse: collapse; }
@@ -1086,7 +1086,7 @@ def render_blocked():
     st.markdown("""
     <div class="blocked-wrap">
         <div class="blocked-icon">🚫</div>
-        <h2 style="color:var(--red);font-family:'Playfair Display',serif;font-size:2.2rem;">Account Blocked</h2>
+        <h2 style="color:var(--red);font-family:&quot;Playfair Display&quot;,serif;font-size:2.2rem;">Account Blocked</h2>
         <p style="color:var(--text-muted);max-width:440px;margin:16px auto 32px;line-height:1.7;">
             Your account has been suspended by an administrator.
             Please contact <strong>support@securebank.com</strong> if you believe this is an error.
@@ -1122,7 +1122,7 @@ def render_user_dashboard():
                         border-radius:14px;display:flex;align-items:center;justify-content:center;
                         font-size:1.4rem;">🏦</div>
             <div>
-                <div style="font-family:'Playfair Display',serif;font-size:1.7rem;
+                <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.7rem;
                             font-weight:700;line-height:1.1;color:white;">
                     {greet}, {display_name}
                 </div>
@@ -1148,7 +1148,7 @@ def render_user_dashboard():
                         color:var(--accent);font-weight:700;margin-bottom:8px;">
                 Transaction Scanner
             </div>
-            <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+            <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
                         font-weight:700;margin-bottom:4px;">
                 Verify a Payment
             </div>
@@ -1219,71 +1219,79 @@ def render_user_dashboard():
             amount_fmt    = f"${amount:,.2f}"
             err_fmt       = f"{err:.4f}"
 
-            st.markdown(f"""
-            <div style="background:{bg_color};border:1.5px solid {border_color};
-                        border-radius:20px;padding:32px 36px;margin-bottom:24px;">
+            # Build result card as plain string — avoids f-string / quote parsing issues
+            pf = "Playfair Display"   # font name kept outside HTML string
+            result_html = (
+                '<div style="background:' + bg_color + ';border:1.5px solid ' + border_color + ';'
+                'border-radius:20px;padding:32px 36px;margin-bottom:24px;">'
 
-                <div style="display:flex;align-items:flex-start;gap:20px;">
-                    <div style="width:64px;height:64px;border-radius:16px;flex-shrink:0;
-                                background:{icon_bg_color};display:flex;
-                                align-items:center;justify-content:center;font-size:1.8rem;
-                                border:1.5px solid {icon_bd_color};">
-                        {icon}
-                    </div>
-                    <div style="flex:1;">
-                        <div style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;
-                                    color:{accent_color};font-weight:700;margin-bottom:4px;">
-                            AI Verdict
-                        </div>
-                        <div style="font-family:'Playfair Display',serif;font-size:1.6rem;
-                                    font-weight:700;color:{accent_color};line-height:1.1;">
-                            {verdict}
-                        </div>
-                        <p style="color:var(--text-muted);font-size:0.87rem;
-                                  line-height:1.65;margin-top:10px;max-width:480px;">
-                            {sub_msg}
-                        </p>
-                    </div>
-                </div>
+                '<div style="display:flex;align-items:flex-start;gap:20px;">'
+                  '<div style="width:64px;height:64px;border-radius:16px;flex-shrink:0;'
+                  'background:' + icon_bg_color + ';display:flex;'
+                  'align-items:center;justify-content:center;font-size:1.8rem;'
+                  'border:1.5px solid ' + icon_bd_color + ';">'
+                  + icon +
+                  '</div>'
+                  '<div style="flex:1;">'
+                    '<div style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;'
+                    'color:' + accent_color + ';font-weight:700;margin-bottom:4px;">'
+                    'AI Verdict'
+                    '</div>'
+                    '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.6rem;'
+                    'font-weight:700;color:' + accent_color + ';line-height:1.1;">'
+                    + verdict +
+                    '</div>'
+                    '<p style="color:#8A9BC2;font-size:0.87rem;'
+                    'line-height:1.65;margin-top:10px;max-width:480px;">'
+                    + sub_msg +
+                    '</p>'
+                  '</div>'
+                '</div>'
 
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);
-                            gap:16px;margin-top:28px;padding-top:24px;
-                            border-top:1px solid {border_color};">
-                    <div style="text-align:center;">
-                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
-                                    font-weight:700;color:{accent_color};">{amount_fmt}</div>
-                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
-                                    text-transform:uppercase;letter-spacing:0.5px;">Amount</div>
-                    </div>
-                    <div style="text-align:center;">
-                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
-                                    font-weight:700;color:{accent_color};">{risk_pct}%</div>
-                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
-                                    text-transform:uppercase;letter-spacing:0.5px;">Risk Score</div>
-                    </div>
-                    <div style="text-align:center;">
-                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
-                                    font-weight:700;color:{accent_color};">{err_fmt}</div>
-                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
-                                    text-transform:uppercase;letter-spacing:0.5px;">Error Score</div>
-                    </div>
-                </div>
+                '<div style="display:grid;grid-template-columns:repeat(3,1fr);'
+                'gap:16px;margin-top:28px;padding-top:24px;'
+                'border-top:1px solid ' + border_color + ';">'
 
-                <div style="margin-top:20px;">
-                    <div style="display:flex;justify-content:space-between;
-                                margin-bottom:6px;font-size:0.8rem;color:var(--text-muted);">
-                        <span>Risk Level</span>
-                        <span>{risk_pct}% / 100%</span>
-                    </div>
-                    <div style="height:8px;background:rgba(255,255,255,0.08);
-                                border-radius:100px;overflow:hidden;">
-                        <div style="height:100%;width:{risk_pct}%;
-                                    background:linear-gradient(90deg,{accent_color},{bar_grad_end});
-                                    border-radius:100px;transition:width 0.6s ease;"></div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+                  '<div style="text-align:center;">'
+                    '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
+                    'font-weight:700;color:' + accent_color + ';">' + amount_fmt + '</div>'
+                    '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
+                    'text-transform:uppercase;letter-spacing:0.5px;">Amount</div>'
+                  '</div>'
+
+                  '<div style="text-align:center;">'
+                    '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
+                    'font-weight:700;color:' + accent_color + ';">' + str(risk_pct) + '%</div>'
+                    '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
+                    'text-transform:uppercase;letter-spacing:0.5px;">Risk Score</div>'
+                  '</div>'
+
+                  '<div style="text-align:center;">'
+                    '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
+                    'font-weight:700;color:' + accent_color + ';">' + err_fmt + '</div>'
+                    '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
+                    'text-transform:uppercase;letter-spacing:0.5px;">Error Score</div>'
+                  '</div>'
+
+                '</div>'
+
+                '<div style="margin-top:20px;">'
+                  '<div style="display:flex;justify-content:space-between;'
+                  'margin-bottom:6px;font-size:0.8rem;color:#8A9BC2;">'
+                    '<span>Risk Level</span>'
+                    '<span>' + str(risk_pct) + '% / 100%</span>'
+                  '</div>'
+                  '<div style="height:8px;background:rgba(255,255,255,0.08);'
+                  'border-radius:100px;overflow:hidden;">'
+                    '<div style="height:100%;width:' + str(risk_pct) + '%;'
+                    'background:linear-gradient(90deg,' + accent_color + ',' + bar_grad_end + ');'
+                    'border-radius:100px;transition:width 0.6s ease;"></div>'
+                  '</div>'
+                '</div>'
+
+                '</div>'
+            )
+            st.markdown(result_html, unsafe_allow_html=True)
 
             # ── Charts side by side ──────────────────────────
             ch1, ch2 = st.columns(2)
@@ -1411,25 +1419,25 @@ def render_user_dashboard():
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                 <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);
                             border-radius:12px;padding:16px;text-align:center;">
-                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                    <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
                                 font-weight:700;color:#00D4AA;">86%</div>
                     <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Detection Rate</div>
                 </div>
                 <div style="background:rgba(125,211,252,0.07);border:1px solid rgba(125,211,252,0.2);
                             border-radius:12px;padding:16px;text-align:center;">
-                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                    <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
                                 font-weight:700;color:#7DD3FC;">&lt;4%</div>
                     <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">False Alerts</div>
                 </div>
                 <div style="background:rgba(255,183,0,0.07);border:1px solid rgba(255,183,0,0.2);
                             border-radius:12px;padding:16px;text-align:center;">
-                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                    <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
                                 font-weight:700;color:#FFB700;">2ms</div>
                     <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Scan Latency</div>
                 </div>
                 <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);
                             border-radius:12px;padding:16px;text-align:center;">
-                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                    <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
                                 font-weight:700;color:#00D4AA;">{float(THRESHOLD):.2f}</div>
                     <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Threshold</div>
                 </div>
@@ -1525,7 +1533,7 @@ def render_admin_dashboard():
     st.markdown("""
     <div style="margin-top:32px;">
         <div class="section-tag">User Management</div>
-        <h3 style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:20px;">Registered Users</h3>
+        <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:20px;">Registered Users</h3>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1591,7 +1599,7 @@ def render_admin_dashboard():
     st.markdown("""
     <div style="margin-top:40px;">
         <div class="section-tag">Audit Trail</div>
-        <h3 style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:20px;">All Transactions</h3>
+        <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:20px;">All Transactions</h3>
     </div>
     """, unsafe_allow_html=True)
     try:
@@ -1623,7 +1631,7 @@ def render_admin_dashboard():
     st.markdown("""
     <div style="margin-top:40px;">
         <div class="section-tag">Model Tuning</div>
-        <h3 style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:16px;">AI Sensitivity</h3>
+        <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:16px;">AI Sensitivity</h3>
     </div>
     """, unsafe_allow_html=True)
     new_thr = st.slider(
