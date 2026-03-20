@@ -362,6 +362,123 @@ div[data-testid="stButton-primary"] > button,
 
 /* stSlider */
 .stSlider > div { color: var(--text-muted) !important; }
+
+/* ---- title bar ---- */
+.titlebar {
+    position: sticky; top: 0; z-index: 200;
+    background: rgba(11,26,59,0.92);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.09);
+    padding: 0;
+    margin-bottom: 0;
+}
+.titlebar-inner {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    gap: 16px;
+}
+.tb-left  { display: flex; align-items: center; gap: 12px; }
+.tb-center { display: flex; align-items: center; gap: 24px; }
+.tb-right { display: flex; align-items: center; gap: 10px; }
+
+.tb-logo {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.25rem; font-weight: 700; color: white;
+    text-decoration: none; white-space: nowrap;
+}
+.tb-logo-icon {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg,#00D4AA,#007A62);
+    border-radius: 9px; display: flex;
+    align-items: center; justify-content: center; font-size: 1rem;
+    flex-shrink: 0;
+}
+.tb-sep {
+    width: 1px; height: 22px;
+    background: rgba(255,255,255,0.15); flex-shrink: 0;
+}
+.tb-breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.82rem; color: var(--text-muted);
+}
+.tb-breadcrumb .crumb       { color: var(--text-muted); }
+.tb-breadcrumb .crumb-sep   { color: rgba(255,255,255,0.2); }
+.tb-breadcrumb .crumb-active{ color: white; font-weight: 600; }
+
+.tb-navlink {
+    color: var(--text-muted); font-size: 0.88rem; font-weight: 500;
+    text-decoration: none; padding: 6px 4px; transition: color 0.2s;
+    white-space: nowrap;
+}
+.tb-navlink:hover { color: var(--accent); }
+
+.tb-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0,212,170,0.12);
+    border: 1px solid rgba(0,212,170,0.25);
+    color: var(--accent); border-radius: 100px;
+    padding: 4px 12px; font-size: 0.75rem; font-weight: 700;
+    white-space: nowrap;
+}
+.tb-email {
+    color: var(--text-muted); font-size: 0.82rem; white-space: nowrap;
+    max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* back button in titlebar */
+.tb-back-btn button {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.14) !important;
+    color: var(--text-muted) !important;
+    border-radius: 9px !important;
+    padding: 6px 14px !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s !important;
+    white-space: nowrap;
+}
+.tb-back-btn button:hover {
+    background: rgba(255,255,255,0.13) !important;
+    border-color: rgba(255,255,255,0.28) !important;
+    color: white !important;
+    transform: translateX(-2px) !important;
+}
+/* log-out button */
+.tb-logout-btn button {
+    background: rgba(255,77,77,0.1) !important;
+    border: 1px solid rgba(255,77,77,0.25) !important;
+    color: #FF8080 !important;
+    border-radius: 9px !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+}
+.tb-logout-btn button:hover {
+    background: rgba(255,77,77,0.22) !important;
+    color: white !important;
+}
+/* login/register buttons in titlebar */
+.tb-login-btn button {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    color: white !important;
+    border-radius: 9px !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+}
+.tb-register-btn button {
+    background: linear-gradient(135deg,#00D4AA,#007A62) !important;
+    border: none !important;
+    color: #000 !important;
+    border-radius: 9px !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 3px 12px rgba(0,212,170,0.3) !important;
+}
+/* zero top padding on the block container so bar sits flush */
+.block-container { padding-top: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -454,6 +571,7 @@ defaults = {
     "email": None,
     "is_admin": False,
     "page": "landing",          # landing | login | register | reset | dashboard | blocked
+    "page_history": [],         # breadcrumb stack for back navigation
     "auth_error": "",
     "auth_success": "",
     "last_result": None,        # dict with err, fraud
@@ -463,11 +581,32 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
-def go(page: str):
+def go(page: str, push_history: bool = True):
+    """Navigate to a page, optionally recording the current page in history."""
+    if push_history and st.session_state.page not in ("blocked",):
+        history = st.session_state.get("page_history", [])
+        # avoid duplicate consecutive entries
+        if not history or history[-1] != st.session_state.page:
+            history.append(st.session_state.page)
+        st.session_state.page_history = history
     st.session_state.page = page
     st.session_state.auth_error = ""
     st.session_state.auth_success = ""
     st.rerun()
+
+
+def go_back():
+    """Pop the last page from history and navigate to it."""
+    history = st.session_state.get("page_history", [])
+    if history:
+        prev = history.pop()
+        st.session_state.page_history = history
+        st.session_state.page = prev
+        st.session_state.auth_error = ""
+        st.session_state.auth_success = ""
+        st.rerun()
+    else:
+        go("landing", push_history=False)
 
 
 def logout():
@@ -477,56 +616,127 @@ def logout():
 
 
 # ---------------------------------------------------------
-# 4. NAVIGATION BAR (renders on all pages)
+# 4. NAVIGATION TITLE BAR (renders on all pages)
 # ---------------------------------------------------------
+
+# Human-readable page labels and their parent for breadcrumbs
+PAGE_META = {
+    "landing":   {"label": "Home",              "parent": None},
+    "login":     {"label": "Sign In",           "parent": "landing"},
+    "register":  {"label": "Create Account",    "parent": "landing"},
+    "reset":     {"label": "Reset Password",    "parent": "login"},
+    "dashboard": {"label": "Dashboard",         "parent": "landing"},
+    "blocked":   {"label": "Account Suspended", "parent": None},
+}
+
+
+def _breadcrumbs(current_page: str) -> list:
+    """Build breadcrumb chain by walking parent links."""
+    chain = []
+    p = current_page
+    while p:
+        meta = PAGE_META.get(p, {"label": p.title(), "parent": None})
+        chain.insert(0, (p, meta["label"]))
+        p = meta.get("parent")
+    return chain
+
+
 def render_nav():
-    col_logo, col_links, col_cta = st.columns([1.2, 3, 2])
-    with col_logo:
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:10px;padding:12px 0;">
-            <div style="width:38px;height:38px;background:linear-gradient(135deg,#00D4AA,#007A62);
-                        border-radius:10px;display:flex;align-items:center;justify-content:center;
-                        font-size:1.2rem;">🏦</div>
-            <span style="font-family:'Playfair Display',serif;font-size:1.35rem;font-weight:700;color:white;">
-                SecureBank
+    page    = st.session_state.page
+    history = st.session_state.get("page_history", [])
+    can_go_back = len(history) > 0
+
+    # ── Titlebar HTML shell ────────────────────────────────────────────────
+    # Logo + separator + breadcrumbs rendered as pure HTML (no buttons here)
+    crumbs      = _breadcrumbs(page)
+    crumb_html  = ""
+    for i, (pg, label) in enumerate(crumbs):
+        is_last = (i == len(crumbs) - 1)
+        if is_last:
+            crumb_html += f'<span class="crumb-active">{label}</span>'
+        else:
+            crumb_html += f'<span class="crumb">{label}</span>'
+            crumb_html += '<span class="crumb-sep">›</span>'
+
+    # Middle: landing nav links vs logged-in page tabs
+    if not st.session_state.logged_in:
+        mid_html = """
+            <a href="#features"     class="tb-navlink">Features</a>
+            <a href="#how-it-works" class="tb-navlink">How It Works</a>
+            <a href="#pricing"      class="tb-navlink">Pricing</a>
+        """
+    else:
+        role     = "Admin" if st.session_state.is_admin else "Member"
+        email    = st.session_state.email or ""
+        mid_html = f"""
+            <span class="tb-pill">
+                <span style="width:7px;height:7px;background:#00D4AA;border-radius:50%;
+                             display:inline-block;animation:pulse 2s infinite;"></span>
+                {role}
             </span>
+            <span class="tb-email" title="{email}">{email}</span>
+        """
+
+    st.markdown(f"""
+    <div class="titlebar">
+      <div class="titlebar-inner">
+        <div class="tb-left">
+          <div class="tb-logo">
+            <div class="tb-logo-icon">🏦</div>
+            SecureBank
+          </div>
+          <div class="tb-sep"></div>
+          <div class="tb-breadcrumb">{crumb_html}</div>
         </div>
-        """, unsafe_allow_html=True)
+        <div class="tb-center">{mid_html}</div>
+        <div class="tb-right" id="tb-buttons-placeholder"></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with col_links:
-        if not st.session_state.logged_in:
-            st.markdown("""
-            <div style="display:flex;align-items:center;gap:28px;padding-top:18px;">
-                <a href="#features"    style="color:var(--text-muted);text-decoration:none;font-size:0.9rem;font-weight:500;">Features</a>
-                <a href="#how-it-works" style="color:var(--text-muted);text-decoration:none;font-size:0.9rem;font-weight:500;">How It Works</a>
-                <a href="#pricing"     style="color:var(--text-muted);text-decoration:none;font-size:0.9rem;font-weight:500;">Pricing</a>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            role = "Admin" if st.session_state.is_admin else "Member"
-            st.markdown(f"""
-            <div style="display:flex;align-items:center;gap:8px;padding-top:18px;">
-                <span style="background:rgba(0,212,170,0.15);border:1px solid rgba(0,212,170,0.3);
-                             color:var(--accent);padding:4px 14px;border-radius:100px;
-                             font-size:0.78rem;font-weight:700;">{role}</span>
-                <span style="color:var(--text-muted);font-size:0.88rem;">{st.session_state.email}</span>
-            </div>
-            """, unsafe_allow_html=True)
+    # ── Interactive buttons rendered via Streamlit columns ──────────────────
+    # We use a tight column row that visually aligns with the right side of
+    # the titlebar via negative-margin trick.
+    _, btn_area = st.columns([6, 1.6])
+    with btn_area:
+        btn_cols_count = (1 if can_go_back else 0) + (2 if not st.session_state.logged_in else 1)
+        if btn_cols_count == 0:
+            btn_cols_count = 1
+        bcols = st.columns(btn_cols_count)
+        col_idx = 0
 
-    with col_cta:
+        # Back button — shown whenever there is history to go back to
+        if can_go_back:
+            with bcols[col_idx]:
+                st.markdown('<div class="tb-back-btn">', unsafe_allow_html=True)
+                if st.button("← Back", key="nav_back", use_container_width=True):
+                    go_back()
+                st.markdown('</div>', unsafe_allow_html=True)
+            col_idx += 1
+
         if not st.session_state.logged_in:
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Log In", use_container_width=True, key="nav_login"):
+            with bcols[col_idx]:
+                st.markdown('<div class="tb-login-btn">', unsafe_allow_html=True)
+                if st.button("Log In", key="nav_login", use_container_width=True):
                     go("login")
-            with c2:
-                if st.button("Get Started", use_container_width=True, type="primary", key="nav_register"):
+                st.markdown('</div>', unsafe_allow_html=True)
+            col_idx += 1
+            with bcols[col_idx]:
+                st.markdown('<div class="tb-register-btn">', unsafe_allow_html=True)
+                if st.button("Get Started", key="nav_register", use_container_width=True):
                     go("register")
+                st.markdown('</div>', unsafe_allow_html=True)
         else:
-            if st.button("Log Out", use_container_width=True, key="nav_logout"):
-                logout()
+            with bcols[col_idx]:
+                st.markdown('<div class="tb-logout-btn">', unsafe_allow_html=True)
+                if st.button("Log Out", key="nav_logout", use_container_width=True):
+                    logout()
+                st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 8px;'>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='height:8px;'></div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------
