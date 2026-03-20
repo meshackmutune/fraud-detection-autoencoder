@@ -435,7 +435,7 @@ def set_blocked(uid: str, blocked: bool):
 def save_transaction(uid: str, amount: float, error: float, fraud: bool):
     try:
         db.collection("transactions").add({
-            "uid": uid,
+            "uid": str(uid),
             "amount": float(amount),
             "error": float(error),
             "fraud": bool(fraud),
@@ -935,18 +935,24 @@ def render_user_dashboard():
             with st.spinner("AI engine scanning transaction…"):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
+            # Cast NumPy scalars → plain Python types so Plotly / Firestore never choke
+            err   = float(err)
+            fraud = bool(fraud)
+
             save_transaction(st.session_state.uid, amount, err, fraud)
             st.session_state.last_result = {"err": err, "fraud": fraud, "amount": amount}
 
         # show result
         if st.session_state.last_result:
             r = st.session_state.last_result
-            err, fraud = r["err"], r["fraud"]
+            # Always cast to plain Python types — NumPy scalars break Plotly
+            err    = float(r["err"])
+            fraud  = bool(r["fraud"])
             status     = "BLOCKED" if fraud else "SAFE"
             cls        = "result-fraud" if fraud else "result-safe"
             light_cls  = "light-fraud" if fraud else "light-safe"
             status_cls = "result-status-fraud" if fraud else "result-status-safe"
-            risk_pct   = min(100, int(err * 100))
+            risk_pct   = int(min(100, err * 100))
 
             st.markdown(f"""
             <div class="{cls}" style="margin-top:16px;">
@@ -985,9 +991,9 @@ def render_user_dashboard():
             fig2 = go.Figure()
             fig2.add_trace(go.Scatter(x=x, y=normal_d, fill="tozeroy", fillcolor="rgba(0,212,170,0.25)", line_color="rgba(0,0,0,0)", name="Normal"))
             fig2.add_trace(go.Scatter(x=x, y=fraud_d,  fill="tozeroy", fillcolor="rgba(255,77,77,0.25)",  line_color="rgba(0,0,0,0)", name="Fraud"))
-            fig2.add_vline(x=THRESHOLD, line_dash="dash", line_color="#FFB700",
+            fig2.add_vline(x=float(THRESHOLD), line_dash="dash", line_color="#FFB700",
                            annotation_text=f"Threshold {THRESHOLD:.2f}", annotation_position="top")
-            fig2.add_scatter(x=[err], y=[0], mode="markers",
+            fig2.add_scatter(x=[float(err)], y=[0], mode="markers",
                              marker=dict(size=14, color="#FF4D4D" if fraud else "#00D4AA", symbol="star"),
                              name="Your Transaction")
             fig2.update_layout(
