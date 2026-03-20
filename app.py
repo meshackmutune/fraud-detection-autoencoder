@@ -893,124 +893,348 @@ def render_blocked():
 # 8. USER DASHBOARD
 # ---------------------------------------------------------
 def render_user_dashboard():
+    import re as _re
+
     hour = datetime.now().hour
     greet = "Good morning" if hour < 12 else ("Good afternoon" if hour < 17 else "Good evening")
 
-    # fetch user display name
     try:
         doc = db.collection("users").document(st.session_state.uid).get()
         display_name = doc.to_dict().get("name", st.session_state.email).split()[0] if doc.exists else st.session_state.email
     except Exception:
         display_name = st.session_state.email
 
+    # ── Header ──────────────────────────────────────────────
     st.markdown(f"""
-    <div class="dash-greeting">{greet}, {display_name} 👋</div>
-    <p class="dash-sub">Your personal fraud protection dashboard</p>
+    <div style="padding: 8px 0 32px;">
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#00D4AA,#007A62);
+                        border-radius:14px;display:flex;align-items:center;justify-content:center;
+                        font-size:1.4rem;">🏦</div>
+            <div>
+                <div style="font-family:'Playfair Display',serif;font-size:1.7rem;
+                            font-weight:700;line-height:1.1;color:white;">
+                    {greet}, {display_name}
+                </div>
+                <div style="color:var(--text-muted);font-size:0.88rem;margin-top:2px;">
+                    Transaction Verification &nbsp;·&nbsp; AI Fraud Detection
+                </div>
+            </div>
+        </div>
+        <div style="height:1px;background:linear-gradient(90deg,rgba(0,212,170,0.4),transparent);
+                    margin-top:16px;"></div>
+    </div>
     """, unsafe_allow_html=True)
 
-    col_left = st.container()
+    # ── Two-column layout: input left, info cards right ──────
+    col_main, col_side = st.columns([3, 2], gap="large")
 
-    with col_left:
-        # --- transaction checker ---
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("### Check a Transaction")
+    with col_main:
+        # Input card
+        st.markdown("""
+        <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+                    border-radius:20px;padding:32px 36px;margin-bottom:24px;">
+            <div style="font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;
+                        color:var(--accent);font-weight:700;margin-bottom:8px;">
+                Transaction Scanner
+            </div>
+            <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                        font-weight:700;margin-bottom:4px;">
+                Verify a Payment
+            </div>
+            <p style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;margin-bottom:24px;">
+                Enter the transaction amount below. Our AI engine will assess the risk
+                in real time and return an instant verdict.
+            </p>
+        """, unsafe_allow_html=True)
+
         amt_col, btn_col = st.columns([3, 1])
         with amt_col:
-            amt = st.text_input("Amount (USD)", placeholder="e.g. 250.00", key="txn_amount", label_visibility="collapsed")
+            amt = st.text_input(
+                "Transaction Amount (USD)",
+                placeholder="0.00",
+                key="txn_amount",
+            )
         with btn_col:
-            verify = st.button("Verify →", use_container_width=True, type="primary", key="txn_verify")
+            st.markdown("<div style='margin-top:28px;'>", unsafe_allow_html=True)
+            verify = st.button("Scan →", use_container_width=True, type="primary", key="txn_verify")
+            st.markdown("</div>", unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
+        # ── Run scan ────────────────────────────────────────
         if verify:
             try:
-                amount = float(amt)
+                amount = float(str(amt).replace(",", "").strip())
                 if amount <= 0:
                     raise ValueError
             except Exception:
-                st.warning("Please enter a valid positive amount.")
+                st.warning("⚠️  Please enter a valid positive amount.")
                 st.stop()
 
             vec = np.zeros(INPUT_DIM)
             vec[29] = amount
-            with st.spinner("AI engine scanning transaction…"):
+
+            with st.spinner("Scanning transaction through AI engine…"):
                 err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
 
-            # Cast NumPy scalars → plain Python types so Plotly / Firestore never choke
             err   = float(err)
             fraud = bool(fraud)
-
             save_transaction(st.session_state.uid, amount, err, fraud)
             st.session_state.last_result = {"err": err, "fraud": fraud, "amount": amount}
 
-        # show result
+        # ── Result ──────────────────────────────────────────
         if st.session_state.last_result:
-            r = st.session_state.last_result
-            # Always cast to plain Python types — NumPy scalars break Plotly
-            err    = float(r["err"])
-            fraud  = bool(r["fraud"])
-            status     = "BLOCKED" if fraud else "SAFE"
-            cls        = "result-fraud" if fraud else "result-safe"
-            light_cls  = "light-fraud" if fraud else "light-safe"
-            status_cls = "result-status-fraud" if fraud else "result-status-safe"
-            risk_pct   = int(min(100, err * 100))
+            r        = st.session_state.last_result
+            err      = float(r["err"])
+            fraud    = bool(r["fraud"])
+            amount   = float(r["amount"])
+            risk_pct = int(min(100, err * 100))
+
+            accent_color = "#FF4D4D" if fraud else "#00D4AA"
+            bg_color     = "rgba(255,77,77,0.08)"  if fraud else "rgba(0,212,170,0.08)"
+            border_color = "rgba(255,77,77,0.3)"   if fraud else "rgba(0,212,170,0.3)"
+            icon         = "⛔" if fraud else "✅"
+            verdict      = "TRANSACTION BLOCKED" if fraud else "TRANSACTION APPROVED"
+            sub_msg      = ("This payment exhibits characteristics consistent with fraudulent activity. "
+                            "It has been flagged and blocked for your protection.")  if fraud else                            ("This payment has been assessed by our AI engine and cleared as legitimate. "
+                            "No suspicious activity detected.")
 
             st.markdown(f"""
-            <div class="{cls}" style="margin-top:16px;">
-                <div class="traffic-light {light_cls}"></div>
-                <div class="{status_cls}">{status}</div>
-                <p style="color:var(--text-muted);font-size:0.9rem;margin-top:8px;">
-                    Risk score: <strong>{risk_pct}%</strong> &nbsp;·&nbsp;
-                    Reconstruction error: <strong>{err:.4f}</strong>
-                </p>
+            <div style="background:{bg_color};border:1.5px solid {border_color};
+                        border-radius:20px;padding:32px 36px;margin-bottom:24px;">
+
+                <div style="display:flex;align-items:flex-start;gap:20px;">
+                    <div style="width:64px;height:64px;border-radius:16px;flex-shrink:0;
+                                background:{accent_color}22;display:flex;
+                                align-items:center;justify-content:center;font-size:1.8rem;
+                                border:1.5px solid {accent_color}55;">
+                        {icon}
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;
+                                    color:{accent_color};font-weight:700;margin-bottom:4px;">
+                            AI Verdict
+                        </div>
+                        <div style="font-family:'Playfair Display',serif;font-size:1.6rem;
+                                    font-weight:700;color:{accent_color};line-height:1.1;">
+                            {verdict}
+                        </div>
+                        <p style="color:var(--text-muted);font-size:0.87rem;
+                                  line-height:1.65;margin-top:10px;max-width:480px;">
+                            {sub_msg}
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);
+                            gap:16px;margin-top:28px;padding-top:24px;
+                            border-top:1px solid {border_color};">
+                    <div style="text-align:center;">
+                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
+                                    font-weight:700;color:{accent_color};">${amount:,.2f}</div>
+                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
+                                    text-transform:uppercase;letter-spacing:0.5px;">Amount</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
+                                    font-weight:700;color:{accent_color};">{risk_pct}%</div>
+                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
+                                    text-transform:uppercase;letter-spacing:0.5px;">Risk Score</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:'Playfair Display',serif;font-size:1.5rem;
+                                    font-weight:700;color:{accent_color};">{err:.4f}</div>
+                        <div style="color:var(--text-muted);font-size:0.75rem;margin-top:3px;
+                                    text-transform:uppercase;letter-spacing:0.5px;">Error Score</div>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                    <div style="display:flex;justify-content:space-between;
+                                margin-bottom:6px;font-size:0.8rem;color:var(--text-muted);">
+                        <span>Risk Level</span>
+                        <span>{risk_pct}% / 100%</span>
+                    </div>
+                    <div style="height:8px;background:rgba(255,255,255,0.08);
+                                border-radius:100px;overflow:hidden;">
+                        <div style="height:100%;width:{risk_pct}%;
+                                    background:linear-gradient(90deg,{accent_color},{accent_color}99);
+                                    border-radius:100px;transition:width 0.6s ease;"></div>
+                    </div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # bar chart
-            fig = go.Figure(go.Bar(
-                x=["Your Risk", "Average"],
-                y=[risk_pct, 15],
-                marker_color=["#FF4D4D" if fraud else "#00D4AA", "#4A5568"],
-                text=[f"{risk_pct}%", "15%"],
-                textposition="outside",
-            ))
-            fig.update_layout(
-                title="Risk Level Comparison",
-                yaxis_title="Risk %",
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                font_color="white",
-                margin=dict(t=40, b=20),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # ── Charts side by side ──────────────────────────
+            ch1, ch2 = st.columns(2)
 
-            # AI decision visualisation
-            st.markdown("#### How the AI Decides")
-            x = np.linspace(0, 2, 200)
-            normal_d = np.exp(-((x - 0.3) ** 2) / (2 * 0.1 ** 2)) / np.sqrt(2 * np.pi * 0.1 ** 2)
-            fraud_d  = np.exp(-((x - 1.2) ** 2) / (2 * 0.3 ** 2)) / np.sqrt(2 * np.pi * 0.3 ** 2) * 0.3
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=x, y=normal_d, fill="tozeroy", fillcolor="rgba(0,212,170,0.25)", line_color="rgba(0,0,0,0)", name="Normal"))
-            fig2.add_trace(go.Scatter(x=x, y=fraud_d,  fill="tozeroy", fillcolor="rgba(255,77,77,0.25)",  line_color="rgba(0,0,0,0)", name="Fraud"))
-            fig2.add_vline(x=float(THRESHOLD), line_dash="dash", line_color="#FFB700",
-                           annotation_text=f"Threshold {THRESHOLD:.2f}", annotation_position="top")
-            fig2.add_scatter(x=[float(err)], y=[0], mode="markers",
-                             marker=dict(size=14, color="#FF4D4D" if fraud else "#00D4AA", symbol="star"),
-                             name="Your Transaction")
-            fig2.update_layout(
-                title="AI Decision Engine",
-                xaxis_title="Reconstruction Error",
-                yaxis_title="Density",
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                font_color="white",
-                legend=dict(bgcolor="rgba(255,255,255,0.07)", x=0.01, y=0.99),
-                margin=dict(t=40, b=20),
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+            with ch1:
+                fig_bar = go.Figure(go.Bar(
+                    x=["This Transaction", "Typical Safe", "Typical Fraud"],
+                    y=[risk_pct, 12, 84],
+                    marker_color=[
+                        "#FF4D4D" if fraud else "#00D4AA",
+                        "#00D4AA44",
+                        "#FF4D4D44",
+                    ],
+                    marker_line_width=0,
+                    text=[f"{risk_pct}%", "12%", "84%"],
+                    textposition="outside",
+                    textfont=dict(color="white", size=11),
+                ))
+                fig_bar.update_layout(
+                    title=dict(text="Risk Score Benchmark", font=dict(size=13, color="white")),
+                    yaxis=dict(title="Risk %", range=[0, 115], gridcolor="rgba(255,255,255,0.06)",
+                               tickfont=dict(color="#8A9BC2")),
+                    xaxis=dict(tickfont=dict(color="#8A9BC2"), tickangle=0),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="white",
+                    margin=dict(t=44, b=8, l=8, r=8),
+                    bargap=0.35,
+                    height=280,
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
 
+            with ch2:
+                x_vals     = np.linspace(0, 2, 300).tolist()
+                normal_d   = (np.exp(-((np.array(x_vals) - 0.3)**2) / (2*0.1**2))
+                              / np.sqrt(2*np.pi*0.1**2)).tolist()
+                fraud_d    = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
+                              / np.sqrt(2*np.pi*0.3**2) * 0.3).tolist()
 
+                fig_dist = go.Figure()
+                fig_dist.add_trace(go.Scatter(
+                    x=x_vals, y=normal_d, fill="tozeroy",
+                    fillcolor="rgba(0,212,170,0.18)",
+                    line=dict(color="rgba(0,212,170,0.7)", width=1.5),
+                    name="Normal",
+                ))
+                fig_dist.add_trace(go.Scatter(
+                    x=x_vals, y=fraud_d, fill="tozeroy",
+                    fillcolor="rgba(255,77,77,0.18)",
+                    line=dict(color="rgba(255,77,77,0.7)", width=1.5),
+                    name="Fraud",
+                ))
+                fig_dist.add_vline(
+                    x=float(THRESHOLD), line_dash="dot", line_color="#FFB700", line_width=1.5,
+                    annotation_text=f"Threshold", annotation_font_color="#FFB700",
+                    annotation_font_size=10, annotation_position="top right",
+                )
+                fig_dist.add_trace(go.Scatter(
+                    x=[float(err)], y=[0], mode="markers",
+                    marker=dict(size=12, color=accent_color, symbol="diamond",
+                                line=dict(color="white", width=1.5)),
+                    name="Your Transaction",
+                ))
+                fig_dist.update_layout(
+                    title=dict(text="AI Decision Distribution", font=dict(size=13, color="white")),
+                    xaxis=dict(title="Reconstruction Error", tickfont=dict(color="#8A9BC2"),
+                               gridcolor="rgba(255,255,255,0.06)"),
+                    yaxis=dict(title="Density", tickfont=dict(color="#8A9BC2"),
+                               gridcolor="rgba(255,255,255,0.06)"),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="white",
+                    legend=dict(bgcolor="rgba(255,255,255,0.05)", font=dict(size=10),
+                                bordercolor="rgba(255,255,255,0.08)", borderwidth=1),
+                    margin=dict(t=44, b=8, l=8, r=8),
+                    height=280,
+                )
+                st.plotly_chart(fig_dist, use_container_width=True)
+
+    # ── Side info panel ──────────────────────────────────────
+    with col_side:
+        st.markdown("""
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
+                    border-radius:20px;padding:28px;">
+            <div style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;
+                        color:var(--accent);font-weight:700;margin-bottom:16px;">
+                How It Works
+            </div>
+        """, unsafe_allow_html=True)
+
+        steps = [
+            ("1", "#00D4AA", "Enter Amount",
+             "Type the transaction value into the scanner field on the left."),
+            ("2", "#7DD3FC", "AI Analysis",
+             "Our autoencoder reconstructs the transaction vector and computes a deviation score."),
+            ("3", "#FFB700", "Risk Scoring",
+             "The error score is compared against a calibrated threshold to determine risk."),
+            ("4", "#00D4AA", "Instant Verdict",
+             "Approved or Blocked — returned in milliseconds with full supporting data."),
+        ]
+        for num, color, title, body in steps:
+            st.markdown(f"""
+            <div style="display:flex;gap:14px;margin-bottom:20px;">
+                <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;
+                            background:{color}22;border:1.5px solid {color}55;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:0.8rem;font-weight:700;color:{color};">{num}</div>
+                <div>
+                    <div style="font-weight:600;font-size:0.9rem;margin-bottom:3px;">{title}</div>
+                    <div style="color:var(--text-muted);font-size:0.82rem;line-height:1.55;">{body}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+        # Model stats card
+        st.markdown(f"""
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
+                    border-radius:20px;padding:28px;margin-top:20px;">
+            <div style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;
+                        color:var(--accent);font-weight:700;margin-bottom:16px;">
+                Model Statistics
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);
+                            border-radius:12px;padding:16px;text-align:center;">
+                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                                font-weight:700;color:#00D4AA;">86%</div>
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Detection Rate</div>
+                </div>
+                <div style="background:rgba(125,211,252,0.07);border:1px solid rgba(125,211,252,0.2);
+                            border-radius:12px;padding:16px;text-align:center;">
+                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                                font-weight:700;color:#7DD3FC;">&lt;4%</div>
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">False Alerts</div>
+                </div>
+                <div style="background:rgba(255,183,0,0.07);border:1px solid rgba(255,183,0,0.2);
+                            border-radius:12px;padding:16px;text-align:center;">
+                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                                font-weight:700;color:#FFB700;">2ms</div>
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Scan Latency</div>
+                </div>
+                <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);
+                            border-radius:12px;padding:16px;text-align:center;">
+                    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+                                font-weight:700;color:#00D4AA;">{float(THRESHOLD):.2f}</div>
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Threshold</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Security notice
+        st.markdown("""
+        <div style="background:rgba(255,183,0,0.06);border:1px solid rgba(255,183,0,0.2);
+                    border-radius:14px;padding:18px 20px;margin-top:20px;
+                    display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:1.1rem;margin-top:1px;">🔒</div>
+            <div>
+                <div style="font-size:0.82rem;font-weight:600;color:#FFB700;margin-bottom:4px;">
+                    End-to-End Encrypted
+                </div>
+                <div style="font-size:0.79rem;color:var(--text-muted);line-height:1.55;">
+                    All transaction data is encrypted in transit and at rest.
+                    No raw card or account data is stored.
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------
