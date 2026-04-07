@@ -681,7 +681,6 @@ def render_nav():
         mid_html = """
             <a href="#features"     class="tb-navlink">Features</a>
             <a href="#how-it-works" class="tb-navlink">How It Works</a>
-            <a href="#pricing"      class="tb-navlink">Pricing</a>
         """
     else:
         role     = "Admin" if st.session_state.is_admin else "Member"
@@ -842,40 +841,6 @@ def render_landing():
                 <div class="step-body">{body}</div>
             </div>
             """, unsafe_allow_html=True)
-
-    # ---- pricing ----
-    st.markdown("""
-    <div id="pricing" style="padding:60px 0 20px;">
-        <div class="section-tag">Pricing</div>
-        <div class="section-title">Simple, Transparent Plans</div>
-        <p class="section-sub">No hidden fees. Cancel anytime. Every plan includes core fraud protection.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    plans = [
-        ("Starter",      "Free",  "/mo",   ["100 transactions/mo", "Basic fraud scanning", "Email alerts", "Community support"], False),
-        ("Professional", "$29",   "/mo",   ["Unlimited transactions", "Advanced AI scoring", "Real-time dashboard", "Priority support", "API access"], True),
-        ("Enterprise",   "Custom","",      ["Everything in Pro", "Custom model tuning", "Admin control panel", "SLA guarantee", "Dedicated engineer"], False),
-    ]
-    p_cols = st.columns(3)
-    for col, (name, price, period, feats_list, featured) in zip(p_cols, plans):
-        with col:
-            featured_style = "border-color:#00D4AA;background:rgba(0,212,170,0.04);" if featured else ""
-            feats_html = "".join(
-                f'<div class="plan-feat-item"><span class="plan-feat-check">✓</span>{f}</div>'
-                for f in feats_list
-            )
-            badge = '<div style="background:var(--accent);color:#000;padding:3px 14px;border-radius:100px;font-size:0.72rem;font-weight:700;margin-bottom:12px;width:fit-content;">Most Popular</div>' if featured else ""
-            st.markdown(f"""
-            <div class="plan-card" style="{featured_style}">
-                {badge}
-                <div class="plan-name">{name}</div>
-                <div class="plan-price">{price}<sub>{period}</sub></div>
-                <div style="margin:16px 0;">{feats_html}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            label = "Start Free Trial" if featured else ("Get Started Free" if name == "Starter" else "Contact Sales")
-            if st.button(label, use_container_width=True, type="primary" if featured else "secondary", key=f"plan_{name}"):
-                go("register")
 
     # footer
     st.markdown("""
