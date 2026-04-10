@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, precision_recall_curve, auc
@@ -35,7 +34,7 @@ fraud_df  = df[df["Class"] == 1]
 
 
 # Split & scale
-# Training set = NORMAL transactions only  (UAD constraint)
+# Training set = NORMAL transactions only (UAD constraint)
 X_train, X_temp = train_test_split(
     normal_df.drop("Class", axis=1), test_size=0.2, random_state=SEED
 )
@@ -57,7 +56,7 @@ print(f"  Train size : {len(X_train_sc):,}  (normal only)")
 print(f"  Test  size : {len(X_test_sc):,}  (fraud: {y_test.sum():,})")
 
 
-# Deep Autoencoder
+# --- 1. Deep Autoencoder Architecture ---
 class DeepAutoencoder(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
@@ -77,80 +76,119 @@ class DeepAutoencoder(nn.Module):
 
 # Training the Autoencoder
 print("\nTraining Autoencoder ...")
-model     = DeepAutoencoder(INPUT_DIM).to(DEVICE)
+ae_model  = DeepAutoencoder(INPUT_DIM).to(DEVICE)
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=LR)
+ae_optimizer = optim.Adam(ae_model.parameters(), lr=LR)
 
 X_tensor = torch.tensor(X_train_sc, dtype=torch.float32).to(DEVICE)
 loader   = DataLoader(TensorDataset(X_tensor, X_tensor),
                       batch_size=BATCH_SIZE, shuffle=True)
 
 for epoch in range(1, EPOCHS + 1):
-    model.train()
+    ae_model.train()
     total_loss = 0
     for x, y in loader:
-        optimizer.zero_grad()
-        loss = criterion(model(x), y)
+        ae_optimizer.zero_grad()
+        loss = criterion(ae_model(x), y)
         loss.backward()
-        optimizer.step()
+        ae_optimizer.step()
         total_loss += loss.item() * x.size(0)
     if epoch % 10 == 0:
-        print(f"  Epoch {epoch}/{EPOCHS}  loss: {total_loss/len(X_tensor):.5f}")
+        print(f"  AE Epoch {epoch}/{EPOCHS}  loss: {total_loss/len(X_tensor):.5f}")
 
 # Evaluate the Autoencoder
-model.eval()
+ae_model.eval()
 with torch.no_grad():
     X_test_t  = torch.tensor(X_test_sc, dtype=torch.float32).to(DEVICE)
-    recon     = model(X_test_t)
+    recon     = ae_model(X_test_t)
     ae_scores = torch.mean((recon - X_test_t) ** 2, dim=1).cpu().numpy()
 
 ae_threshold = float(np.percentile(ae_scores, 95))
 ae_pred      = (ae_scores > ae_threshold).astype(int)
 
-p, r, _   = precision_recall_curve(y_test, ae_scores)
-ae_auc_pr = auc(r, p)
+p_ae, r_ae, _ = precision_recall_curve(y_test, ae_scores)
+ae_auc_pr     = auc(r_ae, p_ae)
 
 print(f"\nAutoencoder  |  AUC-PR: {ae_auc_pr:.4f}  |  threshold: {ae_threshold:.5f}")
 print(classification_report(y_test, ae_pred, target_names=["Normal", "Fraud"]))
 
-# Isolation Forest
-print("Training Isolation Forest ...")
-iso_model = IsolationForest(n_estimators=100, contamination="auto",
-                            random_state=SEED, n_jobs=-1)
-iso_model.fit(X_train_sc)
 
-if_scores = -iso_model.score_samples(X_test_sc)
-if_pred   = np.where(iso_model.predict(X_test_sc) == -1, 1, 0)
+# --- 2. LSTM Anomaly Detector ---
+print("\nTraining LSTM ...")
 
-p, r, _   = precision_recall_curve(y_test, if_scores)
-if_auc_pr = auc(r, p)
+# Reshape data for LSTM: (samples, time_steps, features)
+X_train_lstm = X_train_sc.reshape((X_train_sc.shape[0], 1, X_train_sc.shape[1]))
+X_test_lstm  = X_test_sc.reshape((X_test_sc.shape[0], 1, X_test_sc.shape[1]))
 
-print(f"\nIsolation Forest  |  AUC-PR: {if_auc_pr:.4f}")
-print(classification_report(y_test, if_pred, target_names=["Normal", "Fraud"]))
+class LSTMDetector(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=20, 
+                            num_layers=1, batch_first=True)
+        self.linear = nn.Linear(20, input_dim)
+
+    def forward(self, x):
+        lstm_out, _ = self.lstm(x)
+        return self.linear(lstm_out)
+
+lstm_model = LSTMDetector(INPUT_DIM).to(DEVICE)
+lstm_optimizer = optim.Adam(lstm_model.parameters(), lr=LR)
+
+X_train_t_lstm = torch.tensor(X_train_lstm, dtype=torch.float32).to(DEVICE)
+lstm_loader = DataLoader(TensorDataset(X_train_t_lstm, X_train_t_lstm),
+                         batch_size=BATCH_SIZE, shuffle=True)
+
+for epoch in range(1, EPOCHS + 1):
+    lstm_model.train()
+    total_loss = 0
+    for x, y in lstm_loader:
+        lstm_optimizer.zero_grad()
+        loss = criterion(lstm_model(x), y)
+        loss.backward()
+        lstm_optimizer.step()
+        total_loss += loss.item() * x.size(0)
+    if epoch % 10 == 0:
+        print(f"  LSTM Epoch {epoch}/{EPOCHS}  loss: {total_loss/len(X_train_t_lstm):.5f}")
+
+# Evaluate the LSTM
+lstm_model.eval()
+with torch.no_grad():
+    X_test_t_lstm = torch.tensor(X_test_lstm, dtype=torch.float32).to(DEVICE)
+    lstm_recon = lstm_model(X_test_t_lstm)
+    lstm_scores = torch.mean((lstm_recon - X_test_t_lstm) ** 2, dim=(1, 2)).cpu().numpy()
+
+lstm_threshold = float(np.percentile(lstm_scores, 95))
+lstm_pred = (lstm_scores > lstm_threshold).astype(int)
+
+p_lstm, r_lstm, _ = precision_recall_curve(y_test, lstm_scores)
+lstm_auc_pr = auc(r_lstm, p_lstm)
+
+print(f"\nLSTM  |  AUC-PR: {lstm_auc_pr:.4f}  |  threshold: {lstm_threshold:.5f}")
+print(classification_report(y_test, lstm_pred, target_names=["Normal", "Fraud"]))
 
 
-# Pick the best model
-if ae_auc_pr >= if_auc_pr:
+# --- 3. Pick the best model ---
+if ae_auc_pr >= lstm_auc_pr:
     best_name  = "Autoencoder"
-    best_obj   = model
+    best_obj   = ae_model
     best_auc   = ae_auc_pr
     threshold  = ae_threshold
 else:
-    best_name  = "Isolation Forest"
-    best_obj   = iso_model
-    best_auc   = if_auc_pr
-    threshold  = None
+    best_name  = "LSTM"
+    best_obj   = lstm_model
+    best_auc   = lstm_auc_pr
+    threshold  = lstm_threshold
 
 print(f"\nBest model: {best_name}  (AUC-PR = {best_auc:.4f})")
 
 
-# Package & save  ->  fraud_detector.zip
+# --- 4. Package & save  ->  fraud_detector.zip ---
 manifest = {
     "model_type"   : best_name,
     "input_dim"    : int(INPUT_DIM),
     "feature_names": list(features.columns),
     "auc_pr"       : round(best_auc, 6),
-    "threshold"    : float(threshold) if threshold else None,
+    "threshold"    : float(threshold),
 }
 
 with zipfile.ZipFile(OUTPUT_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -160,13 +198,8 @@ with zipfile.ZipFile(OUTPUT_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
     pickle.dump(scaler, scaler_buf)
     zf.writestr("scaler.pkl", scaler_buf.getvalue())
 
-    if best_name == "Autoencoder":
-        buf = io.BytesIO()
-        torch.save(model.state_dict(), buf)
-        zf.writestr("model.pth", buf.getvalue())
-    else:
-        buf = io.BytesIO()
-        pickle.dump(iso_model, buf)
-        zf.writestr("model.pkl", buf.getvalue())
+    buf = io.BytesIO()
+    torch.save(best_obj.state_dict(), buf)
+    zf.writestr("model.pth", buf.getvalue())
 
 print(f"Saved -> {OUTPUT_ZIP}")
