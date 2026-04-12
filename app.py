@@ -324,8 +324,8 @@ div[data-testid="stButton-primary"] > button,
     from { box-shadow: 0 0 25px currentColor; }
     to   { box-shadow: 0 0 55px currentColor, 0 0 80px rgba(0,0,0,0.3); }
 }
-.result-status-safe  { font-family:&quot;Playfair Display&quot;,serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
-.result-status-fraud { font-family:&quot;Playfair Display&quot;,serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--red); }
+.result-status-safe  { font-family:"Playfair Display",serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
+.result-status-fraud { font-family:"Playfair Display",serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--red); }
 
 /* ---- admin table ---- */
 .users-table { width: 100%; border-collapse: collapse; }
@@ -584,19 +584,33 @@ def save_transaction(uid: str, amount: float, error: float, fraud: bool):
 # 3. SESSION DEFAULTS
 # ---------------------------------------------------------
 defaults = {
-    "logged_in": False,
-    "uid": None,
-    "email": None,
-    "is_admin": False,
-    "page": "landing",          # landing | login | register | reset | dashboard | blocked
-    "page_history": [],         # breadcrumb stack for back navigation
-    "auth_error": "",
+    "logged_in":    False,
+    "uid":          None,
+    "email":        None,
+    "is_admin":     False,
+    "page":         "landing",   # landing | login | register | reset | dashboard | blocked
+    "page_history": [],          # breadcrumb stack for back navigation
+    "auth_error":   "",
     "auth_success": "",
-    "last_result": None,        # dict with err, fraud
+    "last_result":  None,        # dict with err, fraud
+    "threshold":    None,        # ← FIX: admin-adjustable threshold stored in session state
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# ── FIX: seed threshold from Firestore on first load, fall back to model default ──
+if st.session_state.threshold is None:
+    try:
+        thr_doc = db.collection("settings").document("model").get()
+        if thr_doc.exists:
+            st.session_state.threshold = float(
+                thr_doc.to_dict().get("threshold", THRESHOLD)
+            )
+        else:
+            st.session_state.threshold = float(THRESHOLD)
+    except Exception:
+        st.session_state.threshold = float(THRESHOLD)
 
 
 def go(page: str, push_history: bool = True):
@@ -665,7 +679,6 @@ def render_nav():
     can_go_back = len(history) > 0
 
     # ── Titlebar HTML shell ────────────────────────────────────────────────
-    # Logo + separator + breadcrumbs rendered as pure HTML (no buttons here)
     crumbs      = _breadcrumbs(page)
     crumb_html  = ""
     for i, (pg, label) in enumerate(crumbs):
@@ -676,7 +689,6 @@ def render_nav():
             crumb_html += f'<span class="crumb">{label}</span>'
             crumb_html += '<span class="crumb-sep">›</span>'
 
-    # Middle: landing nav links vs logged-in page tabs
     if not st.session_state.logged_in:
         mid_html = """
             <a href="#features"     class="tb-navlink">Features</a>
@@ -711,9 +723,6 @@ def render_nav():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Interactive buttons rendered via Streamlit columns ──────────────────
-    # We use a tight column row that visually aligns with the right side of
-    # the titlebar via negative-margin trick.
     _, btn_area = st.columns([6, 1.6])
     with btn_area:
         btn_cols_count = (1 if can_go_back else 0) + (2 if not st.session_state.logged_in else 1)
@@ -722,7 +731,6 @@ def render_nav():
         bcols = st.columns(btn_cols_count)
         col_idx = 0
 
-        # Back button — shown whenever there is history to go back to
         if can_go_back:
             with bcols[col_idx]:
                 st.markdown('<div class="tb-back-btn">', unsafe_allow_html=True)
@@ -760,7 +768,6 @@ def render_nav():
 # 5. LANDING PAGE
 # ---------------------------------------------------------
 def render_landing():
-    # hero
     st.markdown('<div class="hero-grid-bg"></div>', unsafe_allow_html=True)
     col_hero, col_stats = st.columns([3, 1])
     with col_hero:
@@ -842,7 +849,6 @@ def render_landing():
             </div>
             """, unsafe_allow_html=True)
 
-    # footer
     st.markdown("""
     <div class="site-footer">
         <p>© 2025 SecureBank · AI-powered fraud protection &nbsp;|&nbsp;
@@ -867,7 +873,6 @@ def render_auth_messages():
 def render_login():
     _, mid, _ = st.columns([1, 1.6, 1])
     with mid:
-        # logo + header
         st.markdown("""
         <div class="auth-logo">
             <div style="width:56px;height:56px;background:linear-gradient(135deg,#00D4AA,#007A62);
@@ -878,7 +883,6 @@ def render_login():
         </div>
         """, unsafe_allow_html=True)
 
-        # tab buttons
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Sign In", use_container_width=True, type="primary", key="tab_login"):
@@ -919,7 +923,6 @@ def render_login():
 
             # Note: Firebase Admin SDK cannot verify passwords directly.
             # In production, use Firebase REST API signInWithPassword endpoint.
-            # Here we trust the email lookup as a demo stand-in.
             st.session_state.update(
                 uid=fb_user.uid,
                 email=fb_user.email,
@@ -966,7 +969,6 @@ def render_register():
         pwd     = st.text_input("Password",          placeholder="Min 6 characters",  type="password", key="reg_pwd")
         confirm = st.text_input("Confirm Password",  placeholder="Repeat password",   type="password", key="reg_confirm")
 
-        # password strength indicator
         if pwd:
             score = sum([
                 len(pwd) >= 6,
@@ -1008,7 +1010,6 @@ def render_register():
                 st.session_state.auth_error = f"Could not create account: {err}"
                 st.rerun()
 
-            # save display name to Firestore
             try:
                 db.collection("users").document(fb_user.uid).set({
                     "name": name, "email": email,
@@ -1119,11 +1120,10 @@ def render_user_dashboard():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Two-column layout: input left, info cards right ──────
+    # ── Two-column layout ────────────────────────────────────
     col_main, col_side = st.columns([3, 2], gap="large")
 
     with col_main:
-        # Input card
         st.markdown("""
         <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
                     border-radius:20px;padding:32px 36px;margin-bottom:24px;">
@@ -1169,7 +1169,8 @@ def render_user_dashboard():
             vec[29] = amount
 
             with st.spinner("Scanning transaction through AI engine…"):
-                err, fraud = predict_transaction(MODEL, SCALER, THRESHOLD, vec)
+                # ── FIX: use session_state.threshold instead of the static THRESHOLD ──
+                err, fraud = predict_transaction(MODEL, SCALER, st.session_state.threshold, vec)
 
             err   = float(err)
             fraud = bool(fraud)
@@ -1199,11 +1200,10 @@ def render_user_dashboard():
                 "This payment has been assessed by our AI engine and cleared as legitimate. "
                 "No suspicious activity detected."
             )
-            amount_fmt    = f"${amount:,.2f}"
-            err_fmt       = f"{err:.4f}"
+            amount_fmt = f"${amount:,.2f}"
+            err_fmt    = f"{err:.4f}"
 
-            # Build result card as plain string — avoids f-string / quote parsing issues
-            pf = "Playfair Display"   # font name kept outside HTML string
+            pf = "Playfair Display"
             result_html = (
                 '<div style="background:' + bg_color + ';border:1.5px solid ' + border_color + ';'
                 'border-radius:20px;padding:32px 36px;margin-bottom:24px;">'
@@ -1276,7 +1276,7 @@ def render_user_dashboard():
             )
             st.markdown(result_html, unsafe_allow_html=True)
 
-            # ── Charts side by side ──────────────────────────
+            # ── Charts ──────────────────────────────────────
             ch1, ch2 = st.columns(2)
 
             with ch1:
@@ -1308,11 +1308,11 @@ def render_user_dashboard():
                 st.plotly_chart(fig_bar, use_container_width=True)
 
             with ch2:
-                x_vals     = np.linspace(0, 2, 300).tolist()
-                normal_d   = (np.exp(-((np.array(x_vals) - 0.3)**2) / (2*0.1**2))
-                              / np.sqrt(2*np.pi*0.1**2)).tolist()
-                fraud_d    = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
-                              / np.sqrt(2*np.pi*0.3**2) * 0.3).tolist()
+                x_vals   = np.linspace(0, 2, 300).tolist()
+                normal_d = (np.exp(-((np.array(x_vals) - 0.3)**2) / (2*0.1**2))
+                            / np.sqrt(2*np.pi*0.1**2)).tolist()
+                fraud_d  = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
+                            / np.sqrt(2*np.pi*0.3**2) * 0.3).tolist()
 
                 fig_dist = pgo.Figure()
                 fig_dist.add_trace(pgo.Scatter(
@@ -1327,9 +1327,11 @@ def render_user_dashboard():
                     line=dict(color="rgba(255,77,77,0.7)", width=1.5),
                     name="Fraud",
                 ))
+                # ── FIX: use session_state.threshold for the chart line too ──
                 fig_dist.add_vline(
-                    x=float(THRESHOLD), line_dash="dot", line_color="#FFB700", line_width=1.5,
-                    annotation_text=f"Threshold", annotation_font_color="#FFB700",
+                    x=float(st.session_state.threshold),
+                    line_dash="dot", line_color="#FFB700", line_width=1.5,
+                    annotation_text="Threshold", annotation_font_color="#FFB700",
                     annotation_font_size=10, annotation_position="top right",
                 )
                 fig_dist.add_trace(pgo.Scatter(
@@ -1391,7 +1393,7 @@ def render_user_dashboard():
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Model stats card
+        # ── FIX: show the live threshold from session state, not the static THRESHOLD ──
         st.markdown(f"""
         <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
                     border-radius:20px;padding:28px;margin-top:20px;">
@@ -1421,14 +1423,13 @@ def render_user_dashboard():
                 <div style="background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.2);
                             border-radius:12px;padding:16px;text-align:center;">
                     <div style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;
-                                font-weight:700;color:#00D4AA;">{float(THRESHOLD):.2f}</div>
+                                font-weight:700;color:#00D4AA;">{float(st.session_state.threshold):.2f}</div>
                     <div style="color:var(--text-muted);font-size:0.72rem;margin-top:2px;">Threshold</div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Security notice
         st.markdown("""
         <div style="background:rgba(255,183,0,0.06);border:1px solid rgba(255,183,0,0.2);
                     border-radius:14px;padding:18px 20px;margin-top:20px;
@@ -1520,19 +1521,16 @@ def render_admin_dashboard():
     </div>
     """, unsafe_allow_html=True)
 
-    # Fetch blocked uid set
     try:
         blocked_docs = {d.id for d in db.collection("blocked_users").where("blocked", "==", True).stream()}
     except Exception:
         blocked_docs = set()
 
-    # Fetch user display names from Firestore
     try:
         user_meta = {d.id: d.to_dict() for d in db.collection("users").stream()}
     except Exception:
         user_meta = {}
 
-    # Build rows (exclude admin)
     user_rows = []
     for u in sorted(all_fb_users, key=lambda x: x.user_metadata.creation_timestamp or 0, reverse=True):
         if u.email == ADMIN_EMAIL:
@@ -1552,7 +1550,6 @@ def render_admin_dashboard():
     if not user_rows:
         st.info("No users registered yet.")
     else:
-        # render table with block/unblock buttons
         header_cols = st.columns([2, 2.5, 1.8, 1, 1.2])
         for col, head in zip(header_cols, ["Name", "Email", "Registered", "Status", "Action"]):
             col.markdown(f"<span style='color:var(--text-muted);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;'>{head}</span>", unsafe_allow_html=True)
@@ -1586,15 +1583,12 @@ def render_admin_dashboard():
     </div>
     """, unsafe_allow_html=True)
     try:
-        # ── Build the most complete uid → display name map possible ──────────
         uid_to_name = {}
 
-        # Layer 1: Firebase Auth (always has email, available for every registered user)
         for fb_u in all_fb_users:
             if fb_u.email:
                 uid_to_name[fb_u.uid] = fb_u.email
 
-        # Layer 2: Firestore users collection (has full name — overrides email-only entry)
         try:
             for u in db.collection("users").stream():
                 d     = u.to_dict()
@@ -1607,9 +1601,8 @@ def render_admin_dashboard():
                 elif email:
                     uid_to_name[u.id] = email
         except Exception:
-            pass  # Firestore users collection missing — Auth emails still available
+            pass
 
-        # ── Stream transactions ───────────────────────────────────────────────
         tx_docs = (
             db.collection("transactions")
             .order_by("timestamp", direction=firestore.Query.DESCENDING)
@@ -1622,10 +1615,6 @@ def render_admin_dashboard():
             ts  = d.get("timestamp")
             uid = (d.get("uid") or "").strip()
 
-            # Resolution order:
-            # 1. performed_by stored on the document (set at write time)
-            # 2. uid_to_name lookup (Auth email or Firestore name)
-            # 3. uid itself truncated as last resort
             performed_by = (
                 (d.get("performed_by") or "").strip()
                 or uid_to_name.get(uid, "")
@@ -1660,27 +1649,63 @@ def render_admin_dashboard():
         st.error(f"Firestore error: {e}")
 
     # ---- AI threshold ----
+    # ═══════════════════════════════════════════════════════════
+    # FIX: threshold is now read from and written to session_state
+    # so it survives reruns, and persisted to Firestore so it
+    # survives server restarts.
+    # ═══════════════════════════════════════════════════════════
     st.markdown("""
     <div style="margin-top:40px;">
         <div class="section-tag">Model Tuning</div>
         <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:16px;">AI Sensitivity</h3>
     </div>
     """, unsafe_allow_html=True)
+
     new_thr = st.slider(
         "Risk Threshold",
         min_value=0.5, max_value=1.5,
-        value=float(THRESHOLD), step=0.05,
+        value=float(st.session_state.threshold),   # ← reads live value, not static THRESHOLD
+        step=0.05,
         key="admin_threshold",
     )
+
     st.markdown(f"""
-    <div style="text-align:center;color:var(--text-muted);font-size:1.0rem;margin-top:8px;">
-        Current threshold: <strong style="color:#FFB700;">{THRESHOLD:.2f}</strong>
+    <div style="text-align:center;color:var(--text-muted);font-size:1.0rem;margin-top:8px;margin-bottom:16px;">
+        Active threshold: <strong style="color:#FFB700;">{st.session_state.threshold:.2f}</strong>
         &nbsp;→&nbsp;
-        New value: <strong style="color:#00D4AA;">{new_thr:.2f}</strong>
+        Slider value: <strong style="color:#00D4AA;">{new_thr:.2f}</strong>
         &nbsp;
         <span style="font-size:0.82rem;">(lower = more sensitive)</span>
     </div>
     """, unsafe_allow_html=True)
+
+    col_apply, col_reset, _ = st.columns([1.2, 1.2, 3])
+
+    with col_apply:
+        if st.button("✅  Apply Threshold", type="primary", key="apply_threshold", use_container_width=True):
+            st.session_state.threshold = new_thr
+            # Persist to Firestore so the value survives server restarts
+            try:
+                db.collection("settings").document("model").set(
+                    {"threshold": new_thr, "updated": firestore.SERVER_TIMESTAMP},
+                    merge=True,
+                )
+                st.success(f"Threshold updated to **{new_thr:.2f}** and saved.")
+            except Exception as e:
+                st.warning(f"Threshold updated in session but could not save to Firestore: {e}")
+
+    with col_reset:
+        if st.button("↺  Reset to Default", key="reset_threshold", use_container_width=True):
+            default_thr = float(THRESHOLD)
+            st.session_state.threshold = default_thr
+            try:
+                db.collection("settings").document("model").set(
+                    {"threshold": default_thr, "updated": firestore.SERVER_TIMESTAMP},
+                    merge=True,
+                )
+                st.success(f"Threshold reset to model default **{default_thr:.2f}**.")
+            except Exception as e:
+                st.warning(f"Threshold reset in session but could not save to Firestore: {e}")
 
     st.markdown("<div class='site-footer' style='margin-top:60px;'>© 2025 SecureBank Admin Panel</div>", unsafe_allow_html=True)
 
@@ -1688,8 +1713,6 @@ def render_admin_dashboard():
 # ---------------------------------------------------------
 # 10. ROUTER
 # ---------------------------------------------------------
-# Resolve any redirects BEFORE rendering the nav so render_nav()
-# is only ever called once per script run — prevents duplicate key errors.
 page = st.session_state.page
 
 if page == "dashboard":
@@ -1703,10 +1726,8 @@ elif page not in ("landing", "login", "register", "reset", "blocked", "dashboard
     st.session_state.page = "landing"
     st.rerun()
 
-# Re-read page after any rerun-safe redirect above
 page = st.session_state.page
 
-# Render the nav exactly once
 render_nav()
 
 if page == "landing":
