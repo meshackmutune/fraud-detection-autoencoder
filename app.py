@@ -8,6 +8,7 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
 from datetime import datetime
+import pytz
 
 # ---------------------------------------------------------
 # 0. PAGE CONFIG + GLOBAL CSS
@@ -1536,7 +1537,8 @@ def render_admin_dashboard():
         if u.email == ADMIN_EMAIL:
             continue
         reg_ts   = u.user_metadata.creation_timestamp
-        reg_date = datetime.fromtimestamp(reg_ts / 1000).strftime("%Y-%m-%d %H:%M") if reg_ts else "—"
+        local_tz = pytz.timezone("Africa/Nairobi")
+        reg_date = datetime.fromtimestamp(reg_ts / 1000, tz=local_tz).strftime("%Y-%m-%d %H:%M") if reg_ts else "—"
         blocked  = u.uid in blocked_docs
         name     = user_meta.get(u.uid, {}).get("name", "—")
         user_rows.append({
@@ -1621,8 +1623,9 @@ def render_admin_dashboard():
                 or (uid[:14] + "…" if len(uid) > 14 else uid or "—")
             )
 
+            local_tz = pytz.timezone("Africa/Nairobi")
             tx_data.append({
-                "Timestamp":    ts.strftime("%Y-%m-%d %H:%M") if ts else "—",
+                "Timestamp":    ts.astimezone(local_tz).strftime("%Y-%m-%d %H:%M") if ts else "—",
                 "Performed By": performed_by,
                 "Amount":       f"${float(d.get('amount', 0)):,.2f}",
                 "Status":       "🔴 Blocked" if d.get("fraud") else "🟢 Approved",
