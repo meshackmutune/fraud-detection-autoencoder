@@ -7,9 +7,8 @@ import plotly.graph_objects as pgo
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from model_utils import load_model_and_assets, predict_transaction, INPUT_DIM
-from datetime import datetime
+from datetime import datetime, timezone
 import pytz
-
 # ---------------------------------------------------------
 # 0. PAGE CONFIG + GLOBAL CSS
 # ---------------------------------------------------------
@@ -19,40 +18,34 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&display=swap');
-
 :root {
-    --navy:       #0B1A3B;
-    --navy-mid:   #112255;
-    --blue:       #1A3A8F;
-    --accent:     #00D4AA;
-    --accent2:    #FFB700;
-    --red:        #FF4D4D;
-    --text:       #E8EDF8;
+    --navy: #0B1A3B;
+    --navy-mid: #112255;
+    --blue: #1A3A8F;
+    --accent: #00D4AA;
+    --accent2: #FFB700;
+    --red: #FF4D4D;
+    --text: #E8EDF8;
     --text-muted: #8A9BC2;
-    --glass:      rgba(255,255,255,0.07);
-    --glass-b:    rgba(255,255,255,0.12);
-    --radius:     16px;
+    --glass: rgba(255,255,255,0.07);
+    --glass-b: rgba(255,255,255,0.12);
+    --radius: 16px;
 }
-
 * { font-family: 'DM Sans', sans-serif !important; }
 h1,h2,h3 { font-family: 'Playfair Display', serif !important; }
-
 /* ---- full-page background ---- */
 .stApp {
     background: linear-gradient(135deg, #0B1A3B 0%, #112255 50%, #1A3A8F 100%) !important;
     background-attachment: fixed !important;
     color: var(--text) !important;
 }
-
 /* ---- hide default streamlit chrome ---- */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 [data-testid="stSidebar"] { display: none !important; }
-
 /* ---- buttons ---- */
 .stButton > button {
     border-radius: 12px !important;
@@ -61,7 +54,6 @@ h1,h2,h3 { font-family: 'Playfair Display', serif !important; }
     border: none !important;
 }
 .stButton > button:hover { transform: translateY(-2px); }
-
 /* ---- primary (green) ---- */
 div[data-testid="stButton-primary"] > button,
 .btn-primary-custom > .stButton > button {
@@ -69,7 +61,6 @@ div[data-testid="stButton-primary"] > button,
     color: #000 !important;
     box-shadow: 0 4px 20px rgba(0,212,170,0.3) !important;
 }
-
 /* ---- ghost ---- */
 .btn-ghost-custom > .stButton > button {
     background: transparent !important;
@@ -80,13 +71,11 @@ div[data-testid="stButton-primary"] > button,
     border-color: var(--accent) !important;
     color: var(--accent) !important;
 }
-
 /* ---- danger (red) ---- */
 .btn-danger-custom > .stButton > button {
     background: linear-gradient(135deg, #FF4D4D, #CC0000) !important;
     color: white !important;
 }
-
 /* ---- glass card ---- */
 .glass-card {
     background: var(--glass);
@@ -98,7 +87,6 @@ div[data-testid="stButton-primary"] > button,
     transition: all 0.3s;
 }
 .glass-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
-
 /* ---- hero ---- */
 .hero-wrap {
     min-height: 92vh;
@@ -129,7 +117,6 @@ div[data-testid="stButton-primary"] > button,
     animation: pulse 2s infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.4)} }
-
 .hero-title {
     font-family: 'Playfair Display', serif !important;
     font-size: clamp(2.8rem, 4.5vw, 4.5rem) !important;
@@ -141,7 +128,6 @@ div[data-testid="stButton-primary"] > button,
     color: var(--text-muted); font-size: 1.05rem; line-height: 1.75;
     max-width: 560px; margin-bottom: 36px;
 }
-
 /* ---- stat cards ---- */
 .stat-card {
     background: var(--glass);
@@ -160,7 +146,6 @@ div[data-testid="stButton-primary"] > button,
     color: var(--accent); line-height: 1;
 }
 .stat-lbl { color: var(--text-muted); font-size: 0.78rem; margin-top: 4px; }
-
 /* ---- section ---- */
 .section-tag {
     font-size: 0.72rem; letter-spacing: 2px; text-transform: uppercase;
@@ -173,7 +158,6 @@ div[data-testid="stButton-primary"] > button,
     line-height: 1.2 !important;
 }
 .section-sub { color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; max-width: 520px; }
-
 /* ---- feature card ---- */
 .feat-card {
     background: var(--glass);
@@ -195,7 +179,6 @@ div[data-testid="stButton-primary"] > button,
 }
 .feat-title { font-size: 1.0rem; font-weight: 600; margin-bottom: 8px; }
 .feat-body { color: var(--text-muted); font-size: 0.87rem; line-height: 1.6; }
-
 /* ---- step ---- */
 .step-num {
     width: 56px; height: 56px; border-radius: 50%;
@@ -206,7 +189,6 @@ div[data-testid="stButton-primary"] > button,
 }
 .step-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; text-align: center; }
 .step-body { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; text-align: center; }
-
 /* ---- plan card ---- */
 .plan-card {
     background: var(--glass);
@@ -230,7 +212,6 @@ div[data-testid="stButton-primary"] > button,
 }
 .plan-feat-item:last-child { border: none; }
 .plan-feat-check { color: var(--accent); font-weight: 700; }
-
 /* ---- auth forms ---- */
 .auth-wrap {
     max-width: 420px; margin: 0 auto; padding: 48px 0;
@@ -258,7 +239,6 @@ div[data-testid="stButton-primary"] > button,
     color: var(--text-muted);
 }
 .auth-tab-btn.active { background: var(--accent); color: #000; }
-
 /* ---- inputs ---- */
 .stTextInput input {
     background: rgba(255,255,255,0.06) !important;
@@ -273,7 +253,6 @@ div[data-testid="stButton-primary"] > button,
     box-shadow: 0 0 0 2px rgba(0,212,170,0.15) !important;
 }
 .stTextInput label { color: var(--text-muted) !important; font-size: 0.82rem !important; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600 !important; }
-
 /* ---- messages ---- */
 .msg-error {
     background: rgba(255,77,77,0.15); border: 1px solid rgba(255,77,77,0.4);
@@ -285,14 +264,12 @@ div[data-testid="stButton-primary"] > button,
     color: var(--accent); border-radius: 10px; padding: 12px 16px;
     font-size: 0.88rem; margin: 8px 0;
 }
-
 /* ---- dashboard ---- */
 .dash-greeting {
     font-family: 'Playfair Display', serif !important;
     font-size: 2rem !important; font-weight: 700 !important;
 }
 .dash-sub { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 28px; }
-
 .metric-card {
     background: var(--glass);
     border: 1px solid var(--glass-b);
@@ -304,7 +281,6 @@ div[data-testid="stButton-primary"] > button,
     font-size: 2.2rem !important; font-weight: 700 !important; line-height: 1;
 }
 .metric-lbl { color: var(--text-muted); font-size: 0.78rem; margin-top: 6px; }
-
 /* ---- result indicator ---- */
 .result-safe {
     background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3);
@@ -323,11 +299,10 @@ div[data-testid="stButton-primary"] > button,
 .light-fraud { background: radial-gradient(circle, #FF4D4D, #CC0000); box-shadow: 0 0 30px #FF4D4D; }
 @keyframes glowLight {
     from { box-shadow: 0 0 25px currentColor; }
-    to   { box-shadow: 0 0 55px currentColor, 0 0 80px rgba(0,0,0,0.3); }
+    to { box-shadow: 0 0 55px currentColor, 0 0 80px rgba(0,0,0,0.3); }
 }
-.result-status-safe  { font-family:"Playfair Display",serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
+.result-status-safe { font-family:"Playfair Display",serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--accent); }
 .result-status-fraud { font-family:"Playfair Display",serif!important; font-size:1.8rem!important; font-weight:700!important; color:var(--red); }
-
 /* ---- admin table ---- */
 .users-table { width: 100%; border-collapse: collapse; }
 .users-table th {
@@ -340,13 +315,11 @@ div[data-testid="stButton-primary"] > button,
     padding: 13px 14px; font-size: 0.88rem;
     border-bottom: 1px solid rgba(255,255,255,0.04);
 }
-.badge-active  { color: var(--accent); background: rgba(0,212,170,0.12); padding: 3px 10px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; }
-.badge-blocked { color: var(--red);    background: rgba(255,77,77,0.12);  padding: 3px 10px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; }
-
+.badge-active { color: var(--accent); background: rgba(0,212,170,0.12); padding: 3px 10px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; }
+.badge-blocked { color: var(--red); background: rgba(255,77,77,0.12); padding: 3px 10px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; }
 /* ---- blocked screen ---- */
 .blocked-wrap { text-align: center; padding: 100px 40px; }
 .blocked-icon { font-size: 5rem; margin-bottom: 16px; }
-
 /* ---- footer ---- */
 .site-footer {
     background: rgba(5,12,30,0.7);
@@ -355,15 +328,12 @@ div[data-testid="stButton-primary"] > button,
     color: var(--text-muted); font-size: 0.85rem;
     margin-top: 40px;
 }
-
 /* ---- divider ---- */
 .divider-line {
     border: none; border-top: 1px solid var(--glass-b); margin: 24px 0;
 }
-
 /* stSlider */
 .stSlider > div { color: var(--text-muted) !important; }
-
 /* ---- title bar ---- */
 .titlebar {
     position: sticky; top: 0; z-index: 200;
@@ -379,10 +349,9 @@ div[data-testid="stButton-primary"] > button,
     padding: 14px 32px;
     gap: 16px;
 }
-.tb-left  { display: flex; align-items: center; gap: 12px; }
+.tb-left { display: flex; align-items: center; gap: 12px; }
 .tb-center { display: flex; align-items: center; gap: 24px; }
 .tb-right { display: flex; align-items: center; gap: 10px; }
-
 .tb-logo {
     display: flex; align-items: center; gap: 10px;
     font-family: 'Playfair Display', serif;
@@ -404,17 +373,15 @@ div[data-testid="stButton-primary"] > button,
     display: flex; align-items: center; gap: 6px;
     font-size: 0.82rem; color: var(--text-muted);
 }
-.tb-breadcrumb .crumb       { color: var(--text-muted); }
-.tb-breadcrumb .crumb-sep   { color: rgba(255,255,255,0.2); }
+.tb-breadcrumb .crumb { color: var(--text-muted); }
+.tb-breadcrumb .crumb-sep { color: rgba(255,255,255,0.2); }
 .tb-breadcrumb .crumb-active{ color: white; font-weight: 600; }
-
 .tb-navlink {
     color: var(--text-muted); font-size: 0.88rem; font-weight: 500;
     text-decoration: none; padding: 6px 4px; transition: color 0.2s;
     white-space: nowrap;
 }
 .tb-navlink:hover { color: var(--accent); }
-
 .tb-pill {
     display: inline-flex; align-items: center; gap: 6px;
     background: rgba(0,212,170,0.12);
@@ -427,7 +394,6 @@ div[data-testid="stButton-primary"] > button,
     color: var(--text-muted); font-size: 0.82rem; white-space: nowrap;
     max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 }
-
 /* back button in titlebar */
 .tb-back-btn button {
     background: rgba(255,255,255,0.07) !important;
@@ -482,8 +448,6 @@ div[data-testid="stButton-primary"] > button,
 .block-container { padding-top: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
-
-
 # ---------------------------------------------------------
 # 1. FIREBASE & MODEL
 # ---------------------------------------------------------
@@ -494,17 +458,12 @@ def init_firebase():
         firebase_admin.initialize_app(cred)
     if "db" not in st.session_state:
         st.session_state.db = firestore.client()
-
-
 init_firebase()
 MODEL, SCALER, THRESHOLD = load_model_and_assets()
 if MODEL is None:
     st.stop()
-
 db = st.session_state.db
 ADMIN_EMAIL = "admin@securebank.com"
-
-
 # ---------------------------------------------------------
 # 2. HELPERS — Firebase wrappers
 # ---------------------------------------------------------
@@ -514,8 +473,6 @@ def fb_get_user(email: str):
         return auth.get_user_by_email(email)
     except Exception:
         return None
-
-
 def fb_create_user(email: str, password: str):
     """Create Firebase auth user, return (user, error_str)."""
     try:
@@ -523,8 +480,6 @@ def fb_create_user(email: str, password: str):
         return user, None
     except Exception as e:
         return None, str(e)
-
-
 def fb_send_password_reset(email: str):
     """
     Firebase Admin SDK does not send reset emails directly.
@@ -532,8 +487,6 @@ def fb_send_password_reset(email: str):
     Here we simulate success if the user exists.
     """
     return fb_get_user(email) is not None
-
-
 def is_blocked(uid: str) -> bool:
     """Check Firestore 'blocked_users' collection for this uid."""
     try:
@@ -541,15 +494,13 @@ def is_blocked(uid: str) -> bool:
         return doc.exists and doc.to_dict().get("blocked", False)
     except Exception:
         return False
-
-
 def set_blocked(uid: str, blocked: bool):
     """Set or clear the blocked flag in Firestore."""
     db.collection("blocked_users").document(uid).set(
         {"blocked": blocked, "updated": firestore.SERVER_TIMESTAMP}
     )
 
-
+# ==================== FIXED: save_transaction ====================
 def save_transaction(uid: str, amount: float, error: float, fraud: bool):
     # Resolve a human-readable name to store alongside the uid
     performed_by = st.session_state.get("email", uid)
@@ -557,7 +508,7 @@ def save_transaction(uid: str, amount: float, error: float, fraud: bool):
         user_doc = db.collection("users").document(uid).get()
         if user_doc.exists:
             d = user_doc.to_dict()
-            name  = d.get("name", "").strip()
+            name = d.get("name", "").strip()
             email = d.get("email", "").strip()
             if name and email:
                 performed_by = f"{name} ({email})"
@@ -567,41 +518,39 @@ def save_transaction(uid: str, amount: float, error: float, fraud: bool):
                 performed_by = email
     except Exception:
         pass
-
     try:
-        local_tz   = pytz.timezone("Africa/Nairobi")
-        local_time = datetime.now(local_tz)
+        local_tz = pytz.timezone("Africa/Nairobi")
+        local_time = datetime.now(local_tz)   # Fixed: Consistent Nairobi time
+
         db.collection("transactions").add({
-            "uid":          str(uid),
+            "uid": str(uid),
             "performed_by": performed_by,
-            "amount":       float(amount),
-            "error":        float(error),
-            "fraud":        bool(fraud),
-            "timestamp":    local_time,
+            "amount": float(amount),
+            "error": float(error),
+            "fraud": bool(fraud),
+            "timestamp": firestore.SERVER_TIMESTAMP,   # Reliable server UTC
+            "local_time": local_time,                   # For consistent display
         })
     except Exception as e:
         st.error(f"Could not save transaction: {e}")
-
-
 # ---------------------------------------------------------
 # 3. SESSION DEFAULTS
 # ---------------------------------------------------------
 defaults = {
-    "logged_in":    False,
-    "uid":          None,
-    "email":        None,
-    "is_admin":     False,
-    "page":         "landing",   # landing | login | register | reset | dashboard | blocked
-    "page_history": [],          # breadcrumb stack for back navigation
-    "auth_error":   "",
+    "logged_in": False,
+    "uid": None,
+    "email": None,
+    "is_admin": False,
+    "page": "landing", # landing | login | register | reset | dashboard | blocked
+    "page_history": [], # breadcrumb stack for back navigation
+    "auth_error": "",
     "auth_success": "",
-    "last_result":  None,        # dict with err, fraud
-    "threshold":    None,        # ← FIX: admin-adjustable threshold stored in session state
+    "last_result": None, # dict with err, fraud
+    "threshold": None, # ← FIX: admin-adjustable threshold stored in session state
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
 # ── FIX: seed threshold from Firestore on first load, fall back to model default ──
 if st.session_state.threshold is None:
     try:
@@ -614,8 +563,6 @@ if st.session_state.threshold is None:
             st.session_state.threshold = float(THRESHOLD)
     except Exception:
         st.session_state.threshold = float(THRESHOLD)
-
-
 def go(page: str, push_history: bool = True):
     """Navigate to a page, optionally recording the current page in history."""
     if push_history and st.session_state.page not in ("blocked",):
@@ -628,8 +575,6 @@ def go(page: str, push_history: bool = True):
     st.session_state.auth_error = ""
     st.session_state.auth_success = ""
     st.rerun()
-
-
 def go_back():
     """Pop the last page from history and navigate to it."""
     history = st.session_state.get("page_history", [])
@@ -642,29 +587,22 @@ def go_back():
         st.rerun()
     else:
         go("landing", push_history=False)
-
-
 def logout():
     for k in defaults:
         st.session_state[k] = defaults[k]
     st.rerun()
-
-
 # ---------------------------------------------------------
 # 4. NAVIGATION TITLE BAR (renders on all pages)
 # ---------------------------------------------------------
-
 # Human-readable page labels and their parent for breadcrumbs
 PAGE_META = {
-    "landing":   {"label": "Home",              "parent": None},
-    "login":     {"label": "Sign In",           "parent": "landing"},
-    "register":  {"label": "Create Account",    "parent": "landing"},
-    "reset":     {"label": "Reset Password",    "parent": "login"},
-    "dashboard": {"label": "Dashboard",         "parent": "landing"},
-    "blocked":   {"label": "Account Suspended", "parent": None},
+    "landing": {"label": "Home", "parent": None},
+    "login": {"label": "Sign In", "parent": "landing"},
+    "register": {"label": "Create Account", "parent": "landing"},
+    "reset": {"label": "Reset Password", "parent": "login"},
+    "dashboard": {"label": "Dashboard", "parent": "landing"},
+    "blocked": {"label": "Account Suspended", "parent": None},
 }
-
-
 def _breadcrumbs(current_page: str) -> list:
     """Build breadcrumb chain by walking parent links."""
     chain = []
@@ -674,16 +612,13 @@ def _breadcrumbs(current_page: str) -> list:
         chain.insert(0, (p, meta["label"]))
         p = meta.get("parent")
     return chain
-
-
 def render_nav():
-    page    = st.session_state.page
+    page = st.session_state.page
     history = st.session_state.get("page_history", [])
     can_go_back = len(history) > 0
-
     # ── Titlebar HTML shell ────────────────────────────────────────────────
-    crumbs      = _breadcrumbs(page)
-    crumb_html  = ""
+    crumbs = _breadcrumbs(page)
+    crumb_html = ""
     for i, (pg, label) in enumerate(crumbs):
         is_last = (i == len(crumbs) - 1)
         if is_last:
@@ -691,15 +626,14 @@ def render_nav():
         else:
             crumb_html += f'<span class="crumb">{label}</span>'
             crumb_html += '<span class="crumb-sep">›</span>'
-
     if not st.session_state.logged_in:
         mid_html = """
-            <a href="#features"     class="tb-navlink">Features</a>
+            <a href="#features" class="tb-navlink">Features</a>
             <a href="#how-it-works" class="tb-navlink">How It Works</a>
         """
     else:
-        role     = "Admin" if st.session_state.is_admin else "Member"
-        email    = st.session_state.email or ""
+        role = "Admin" if st.session_state.is_admin else "Member"
+        email = st.session_state.email or ""
         mid_html = f"""
             <span class="tb-pill">
                 <span style="width:7px;height:7px;background:#00D4AA;border-radius:50%;
@@ -708,7 +642,6 @@ def render_nav():
             </span>
             <span class="tb-email" title="{email}">{email}</span>
         """
-
     st.markdown(f"""
     <div class="titlebar">
       <div class="titlebar-inner">
@@ -725,7 +658,6 @@ def render_nav():
       </div>
     </div>
     """, unsafe_allow_html=True)
-
     _, btn_area = st.columns([6, 1.6])
     with btn_area:
         btn_cols_count = (1 if can_go_back else 0) + (2 if not st.session_state.logged_in else 1)
@@ -733,7 +665,6 @@ def render_nav():
             btn_cols_count = 1
         bcols = st.columns(btn_cols_count)
         col_idx = 0
-
         if can_go_back:
             with bcols[col_idx]:
                 st.markdown('<div class="tb-back-btn">', unsafe_allow_html=True)
@@ -741,7 +672,6 @@ def render_nav():
                     go_back()
                 st.markdown('</div>', unsafe_allow_html=True)
             col_idx += 1
-
         if not st.session_state.logged_in:
             with bcols[col_idx]:
                 st.markdown('<div class="tb-login-btn">', unsafe_allow_html=True)
@@ -760,13 +690,10 @@ def render_nav():
                 if st.button("Log Out", key=f"nav_logout_{page}", use_container_width=True):
                     logout()
                 st.markdown('</div>', unsafe_allow_html=True)
-
     st.markdown(
         "<div style='height:8px;'></div>",
         unsafe_allow_html=True,
     )
-
-
 # ---------------------------------------------------------
 # 5. LANDING PAGE
 # ---------------------------------------------------------
@@ -786,12 +713,11 @@ def render_landing():
         """, unsafe_allow_html=True)
         c1, c2, c3 = st.columns([1.4, 1.4, 2])
         with c1:
-            if st.button("🚀  Open an Account", use_container_width=True, type="primary", key="hero_register"):
+            if st.button("🚀 Open an Account", use_container_width=True, type="primary", key="hero_register"):
                 go("register")
         with c2:
             if st.button("Sign In →", use_container_width=True, key="hero_login"):
                 go("login")
-
     with col_stats:
         st.markdown("""
         <div style="padding-top:80px;display:flex;flex-direction:column;gap:16px;">
@@ -800,7 +726,6 @@ def render_landing():
             <div class="stat-card"><div class="stat-num">2ms</div><div class="stat-lbl">Scan Latency</div></div>
         </div>
         """, unsafe_allow_html=True)
-
     # ---- features ----
     st.markdown("""
     <div id="features" style="padding:60px 0 20px;">
@@ -810,12 +735,12 @@ def render_landing():
     </div>
     """, unsafe_allow_html=True)
     feats = [
-        ("🤖", "AI Fraud Detection",      "Our autoencoder learns normal transaction patterns and flags anomalies the moment they appear."),
-        ("⚡", "Real-Time Scanning",       "Every transaction scanned in under 2ms — a verdict before your payment even completes."),
+        ("🤖", "AI Fraud Detection", "Our autoencoder learns normal transaction patterns and flags anomalies the moment they appear."),
+        ("⚡", "Real-Time Scanning", "Every transaction scanned in under 2ms — a verdict before your payment even completes."),
         ("🛡️", "Zero-Trust Architecture", "Multi-layer authentication and end-to-end encryption ensure your data stays yours."),
-        ("📊", "Admin Intelligence",       "Full control panel for compliance teams with live dashboards, audit trails, and user management."),
-        ("🔑", "Secure Authentication",   "Firebase-backed auth with password reset flows and session management baked in by default."),
-        ("📱", "Works Everywhere",         "Fully responsive across desktop, tablet, and mobile with a native-feeling experience."),
+        ("📊", "Admin Intelligence", "Full control panel for compliance teams with live dashboards, audit trails, and user management."),
+        ("🔑", "Secure Authentication", "Firebase-backed auth with password reset flows and session management baked in by default."),
+        ("📱", "Works Everywhere", "Fully responsive across desktop, tablet, and mobile with a native-feeling experience."),
     ]
     cols = st.columns(3)
     for i, (icon, title, body) in enumerate(feats):
@@ -827,7 +752,6 @@ def render_landing():
                 <div class="feat-body">{body}</div>
             </div>
             """, unsafe_allow_html=True)
-
     # ---- how it works ----
     st.markdown("""
     <div id="how-it-works" style="padding:60px 0 20px;">
@@ -837,9 +761,9 @@ def render_landing():
     </div>
     """, unsafe_allow_html=True)
     steps = [
-        ("1", "Submit Transaction",  "Enter the amount and hit Verify. Our API receives the request instantly."),
-        ("2", "AI Scans It",         "The autoencoder reconstructs the transaction vector and computes a risk error score."),
-        ("3", "Verdict Delivered",   "Safe or Blocked — you see the result with full risk visualisation in real time."),
+        ("1", "Submit Transaction", "Enter the amount and hit Verify. Our API receives the request instantly."),
+        ("2", "AI Scans It", "The autoencoder reconstructs the transaction vector and computes a risk error score."),
+        ("3", "Verdict Delivered", "Safe or Blocked — you see the result with full risk visualisation in real time."),
     ]
     s_cols = st.columns(3)
     for col, (num, title, body) in zip(s_cols, steps):
@@ -851,7 +775,6 @@ def render_landing():
                 <div class="step-body">{body}</div>
             </div>
             """, unsafe_allow_html=True)
-
     st.markdown("""
     <div class="site-footer">
         <p>© 2025 SecureBank · AI-powered fraud protection &nbsp;|&nbsp;
@@ -861,8 +784,6 @@ def render_landing():
         </p>
     </div>
     """, unsafe_allow_html=True)
-
-
 # ---------------------------------------------------------
 # 6. AUTH PAGES
 # ---------------------------------------------------------
@@ -871,8 +792,6 @@ def render_auth_messages():
         st.markdown(f'<div class="msg-error">⚠️ {st.session_state.auth_error}</div>', unsafe_allow_html=True)
     if st.session_state.auth_success:
         st.markdown(f'<div class="msg-success">✅ {st.session_state.auth_success}</div>', unsafe_allow_html=True)
-
-
 def render_login():
     _, mid, _ = st.columns([1, 1.6, 1])
     with mid:
@@ -885,7 +804,6 @@ def render_login():
             <p>Sign in to your SecureBank account</p>
         </div>
         """, unsafe_allow_html=True)
-
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Sign In", use_container_width=True, type="primary", key="tab_login"):
@@ -893,13 +811,10 @@ def render_login():
         with c2:
             if st.button("Create Account", use_container_width=True, key="tab_register_from_login"):
                 go("register")
-
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         render_auth_messages()
-
         email = st.text_input("Email Address", placeholder="you@example.com", key="li_email")
-        pwd   = st.text_input("Password",       placeholder="Enter your password", type="password", key="li_pwd")
-
+        pwd = st.text_input("Password", placeholder="Enter your password", type="password", key="li_pwd")
         col_remember, col_forgot = st.columns([1, 1])
         with col_remember:
             st.checkbox("Remember me", key="li_remember")
@@ -908,22 +823,18 @@ def render_login():
             if st.button("Forgot password?", key="li_forgot"):
                 go("reset")
             st.markdown("</div>", unsafe_allow_html=True)
-
         if st.button("Sign In →", use_container_width=True, type="primary", key="li_submit"):
             st.session_state.auth_error = ""
             if not email or not pwd:
                 st.session_state.auth_error = "Please fill in all fields."
                 st.rerun()
-
             fb_user = fb_get_user(email)
             if not fb_user:
                 st.session_state.auth_error = "No account found with that email. Please register."
                 st.rerun()
-
             if is_blocked(fb_user.uid):
                 st.session_state.page = "blocked"
                 st.rerun()
-
             # Note: Firebase Admin SDK cannot verify passwords directly.
             # In production, use Firebase REST API signInWithPassword endpoint.
             st.session_state.update(
@@ -933,7 +844,6 @@ def render_login():
                 is_admin=(email == ADMIN_EMAIL),
             )
             go("dashboard")
-
         st.markdown("""
         <div style="text-align:center;margin-top:20px;color:var(--text-muted);font-size:0.88rem;">
             New to SecureBank? &nbsp;
@@ -941,8 +851,6 @@ def render_login():
         """, unsafe_allow_html=True)
         if st.button("Create a free account", use_container_width=True, key="li_to_register"):
             go("register")
-
-
 def render_register():
     _, mid, _ = st.columns([1, 1.6, 1])
     with mid:
@@ -955,7 +863,6 @@ def render_register():
             <p>Join SecureBank — free forever on the Starter plan</p>
         </div>
         """, unsafe_allow_html=True)
-
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Sign In", use_container_width=True, key="tab_login_from_reg"):
@@ -963,15 +870,12 @@ def render_register():
         with c2:
             if st.button("Create Account", use_container_width=True, type="primary", key="tab_register"):
                 go("register")
-
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         render_auth_messages()
-
-        name    = st.text_input("Full Name",         placeholder="Jane Doe",          key="reg_name")
-        email   = st.text_input("Email Address",     placeholder="you@example.com",   key="reg_email")
-        pwd     = st.text_input("Password",          placeholder="Min 6 characters",  type="password", key="reg_pwd")
-        confirm = st.text_input("Confirm Password",  placeholder="Repeat password",   type="password", key="reg_confirm")
-
+        name = st.text_input("Full Name", placeholder="Jane Doe", key="reg_name")
+        email = st.text_input("Email Address", placeholder="you@example.com", key="reg_email")
+        pwd = st.text_input("Password", placeholder="Min 6 characters", type="password", key="reg_pwd")
+        confirm = st.text_input("Confirm Password", placeholder="Repeat password", type="password", key="reg_confirm")
         if pwd:
             score = sum([
                 len(pwd) >= 6,
@@ -992,7 +896,6 @@ def render_register():
                 <span style="font-size:0.75rem;color:{colors[idx]};">{levels[idx]}</span>
             </div>
             """, unsafe_allow_html=True)
-
         if st.button("Create Account →", use_container_width=True, type="primary", key="reg_submit"):
             st.session_state.auth_error = ""
             if not all([name, email, pwd, confirm]):
@@ -1007,12 +910,10 @@ def render_register():
             if fb_get_user(email):
                 st.session_state.auth_error = "An account with that email already exists."
                 st.rerun()
-
             fb_user, err = fb_create_user(email, pwd)
             if err:
                 st.session_state.auth_error = f"Could not create account: {err}"
                 st.rerun()
-
             try:
                 db.collection("users").document(fb_user.uid).set({
                     "name": name, "email": email,
@@ -1020,7 +921,6 @@ def render_register():
                 })
             except Exception:
                 pass
-
             st.session_state.update(
                 uid=fb_user.uid,
                 email=fb_user.email,
@@ -1028,12 +928,9 @@ def render_register():
                 is_admin=False,
             )
             go("dashboard")
-
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
         if st.button("Already have an account? Sign in", use_container_width=True, key="reg_to_login"):
             go("login")
-
-
 def render_reset():
     _, mid, _ = st.columns([1, 1.6, 1])
     with mid:
@@ -1044,11 +941,8 @@ def render_reset():
             <p>Enter your email and we'll send a reset link</p>
         </div>
         """, unsafe_allow_html=True)
-
         render_auth_messages()
-
         reset_email = st.text_input("Email Address", placeholder="you@example.com", key="reset_email")
-
         if st.button("Send Reset Link →", use_container_width=True, type="primary", key="reset_submit"):
             st.session_state.auth_error = ""
             if not reset_email:
@@ -1060,12 +954,9 @@ def render_reset():
             else:
                 st.session_state.auth_error = "No account found with that email address."
             st.rerun()
-
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
         if st.button("← Back to Sign In", use_container_width=True, key="reset_back"):
             go("login")
-
-
 # ---------------------------------------------------------
 # 7. BLOCKED PAGE
 # ---------------------------------------------------------
@@ -1084,23 +975,19 @@ def render_blocked():
     with mid:
         if st.button("← Back to Home", use_container_width=True, key="blocked_back"):
             logout()
-
-
 # ---------------------------------------------------------
-# 8. USER DASHBOARD
+# 8. USER DASHBOARD - Fixed Greeting
 # ---------------------------------------------------------
 def render_user_dashboard():
-    import re as _re
-
-    hour = datetime.now().hour
+    local_tz = pytz.timezone("Africa/Nairobi")
+    now = datetime.now(local_tz)                    # Fixed: Use consistent Nairobi time
+    hour = now.hour
     greet = "Good morning" if hour < 12 else ("Good afternoon" if hour < 17 else "Good evening")
-
     try:
         doc = db.collection("users").document(st.session_state.uid).get()
         display_name = doc.to_dict().get("name", st.session_state.email).split()[0] if doc.exists else st.session_state.email
     except Exception:
         display_name = st.session_state.email
-
     # ── Header ──────────────────────────────────────────────
     st.markdown(f"""
     <div style="padding: 8px 0 32px;">
@@ -1122,10 +1009,8 @@ def render_user_dashboard():
                     margin-top:16px;"></div>
     </div>
     """, unsafe_allow_html=True)
-
     # ── Two-column layout ────────────────────────────────────
     col_main, col_side = st.columns([3, 2], gap="large")
-
     with col_main:
         st.markdown("""
         <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
@@ -1143,7 +1028,6 @@ def render_user_dashboard():
                 in real time and return an instant verdict.
             </p>
         """, unsafe_allow_html=True)
-
         amt_col, btn_col = st.columns([3, 1])
         with amt_col:
             amt = st.text_input(
@@ -1155,9 +1039,7 @@ def render_user_dashboard():
             st.markdown("<div style='margin-top:28px;'>", unsafe_allow_html=True)
             verify = st.button("Scan →", use_container_width=True, type="primary", key="txn_verify")
             st.markdown("</div>", unsafe_allow_html=True)
-
         st.markdown("</div>", unsafe_allow_html=True)
-
         # ── Run scan ────────────────────────────────────────
         if verify:
             try:
@@ -1165,38 +1047,32 @@ def render_user_dashboard():
                 if amount <= 0:
                     raise ValueError
             except Exception:
-                st.warning("⚠️  Please enter a valid positive amount.")
+                st.warning("⚠️ Please enter a valid positive amount.")
                 st.stop()
-
             vec = np.zeros(INPUT_DIM)
             vec[29] = amount
-
             with st.spinner("Scanning transaction through AI engine…"):
-                # ── FIX: use session_state.threshold instead of the static THRESHOLD ──
                 err, fraud = predict_transaction(MODEL, SCALER, st.session_state.threshold, vec)
-
-            err   = float(err)
+            err = float(err)
             fraud = bool(fraud)
             save_transaction(st.session_state.uid, amount, err, fraud)
             st.session_state.last_result = {"err": err, "fraud": fraud, "amount": amount}
-
         # ── Result ──────────────────────────────────────────
         if st.session_state.last_result:
-            r        = st.session_state.last_result
-            err      = float(r["err"])
-            fraud    = bool(r["fraud"])
-            amount   = float(r["amount"])
+            r = st.session_state.last_result
+            err = float(r["err"])
+            fraud = bool(r["fraud"])
+            amount = float(r["amount"])
             risk_pct = int(min(100, err * 100))
-
-            accent_color  = "#FF4D4D" if fraud else "#00D4AA"
-            bg_color      = "rgba(255,77,77,0.08)"  if fraud else "rgba(0,212,170,0.08)"
-            border_color  = "rgba(255,77,77,0.3)"   if fraud else "rgba(0,212,170,0.3)"
-            icon_bg_color = "rgba(255,77,77,0.13)"  if fraud else "rgba(0,212,170,0.13)"
-            icon_bd_color = "rgba(255,77,77,0.35)"  if fraud else "rgba(0,212,170,0.35)"
-            bar_grad_end  = "rgba(255,77,77,0.6)"   if fraud else "rgba(0,212,170,0.6)"
-            icon          = "⛔" if fraud else "✅"
-            verdict       = "TRANSACTION BLOCKED" if fraud else "TRANSACTION APPROVED"
-            sub_msg       = (
+            accent_color = "#FF4D4D" if fraud else "#00D4AA"
+            bg_color = "rgba(255,77,77,0.08)" if fraud else "rgba(0,212,170,0.08)"
+            border_color = "rgba(255,77,77,0.3)" if fraud else "rgba(0,212,170,0.3)"
+            icon_bg_color = "rgba(255,77,77,0.13)" if fraud else "rgba(0,212,170,0.13)"
+            icon_bd_color = "rgba(255,77,77,0.35)" if fraud else "rgba(0,212,170,0.35)"
+            bar_grad_end = "rgba(255,77,77,0.6)" if fraud else "rgba(0,212,170,0.6)"
+            icon = "⛔" if fraud else "✅"
+            verdict = "TRANSACTION BLOCKED" if fraud else "TRANSACTION APPROVED"
+            sub_msg = (
                 "This payment exhibits characteristics consistent with fraudulent activity. "
                 "It has been flagged and blocked for your protection."
             ) if fraud else (
@@ -1204,13 +1080,11 @@ def render_user_dashboard():
                 "No suspicious activity detected."
             )
             amount_fmt = f"${amount:,.2f}"
-            err_fmt    = f"{err:.4f}"
-
+            err_fmt = f"{err:.4f}"
             pf = "Playfair Display"
             result_html = (
                 '<div style="background:' + bg_color + ';border:1.5px solid ' + border_color + ';'
                 'border-radius:20px;padding:32px 36px;margin-bottom:24px;">'
-
                 '<div style="display:flex;align-items:flex-start;gap:20px;">'
                   '<div style="width:64px;height:64px;border-radius:16px;flex-shrink:0;'
                   'background:' + icon_bg_color + ';display:flex;'
@@ -1233,34 +1107,28 @@ def render_user_dashboard():
                     '</p>'
                   '</div>'
                 '</div>'
-
                 '<div style="display:grid;grid-template-columns:repeat(3,1fr);'
                 'gap:16px;margin-top:28px;padding-top:24px;'
                 'border-top:1px solid ' + border_color + ';">'
-
                   '<div style="text-align:center;">'
                     '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
                     'font-weight:700;color:' + accent_color + ';">' + amount_fmt + '</div>'
                     '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
                     'text-transform:uppercase;letter-spacing:0.5px;">Amount</div>'
                   '</div>'
-
                   '<div style="text-align:center;">'
                     '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
                     'font-weight:700;color:' + accent_color + ';">' + str(risk_pct) + '%</div>'
                     '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
                     'text-transform:uppercase;letter-spacing:0.5px;">Risk Score</div>'
                   '</div>'
-
                   '<div style="text-align:center;">'
                     '<div style="font-family:&quot;' + pf + '&quot;,serif;font-size:1.5rem;'
                     'font-weight:700;color:' + accent_color + ';">' + err_fmt + '</div>'
                     '<div style="color:#8A9BC2;font-size:0.75rem;margin-top:3px;'
                     'text-transform:uppercase;letter-spacing:0.5px;">Error Score</div>'
                   '</div>'
-
                 '</div>'
-
                 '<div style="margin-top:20px;">'
                   '<div style="display:flex;justify-content:space-between;'
                   'margin-bottom:6px;font-size:0.8rem;color:#8A9BC2;">'
@@ -1274,14 +1142,11 @@ def render_user_dashboard():
                     'border-radius:100px;transition:width 0.6s ease;"></div>'
                   '</div>'
                 '</div>'
-
                 '</div>'
             )
             st.markdown(result_html, unsafe_allow_html=True)
-
             # ── Charts ──────────────────────────────────────
             ch1, ch2 = st.columns(2)
-
             with ch1:
                 fig_bar = pgo.Figure(pgo.Bar(
                     x=["This Transaction", "Typical Safe", "Typical Fraud"],
@@ -1309,14 +1174,12 @@ def render_user_dashboard():
                     height=280,
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
-
             with ch2:
-                x_vals   = np.linspace(0, 2, 300).tolist()
+                x_vals = np.linspace(0, 2, 300).tolist()
                 normal_d = (np.exp(-((np.array(x_vals) - 0.3)**2) / (2*0.1**2))
                             / np.sqrt(2*np.pi*0.1**2)).tolist()
-                fraud_d  = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
+                fraud_d = (np.exp(-((np.array(x_vals) - 1.2)**2) / (2*0.3**2))
                             / np.sqrt(2*np.pi*0.3**2) * 0.3).tolist()
-
                 fig_dist = pgo.Figure()
                 fig_dist.add_trace(pgo.Scatter(
                     x=x_vals, y=normal_d, fill="tozeroy",
@@ -1330,7 +1193,6 @@ def render_user_dashboard():
                     line=dict(color="rgba(255,77,77,0.7)", width=1.5),
                     name="Fraud",
                 ))
-                # ── FIX: use session_state.threshold for the chart line too ──
                 fig_dist.add_vline(
                     x=float(st.session_state.threshold),
                     line_dash="dot", line_color="#FFB700", line_width=1.5,
@@ -1358,7 +1220,6 @@ def render_user_dashboard():
                     height=280,
                 )
                 st.plotly_chart(fig_dist, use_container_width=True)
-
     # ── Side info panel ──────────────────────────────────────
     with col_side:
         st.markdown("""
@@ -1369,7 +1230,6 @@ def render_user_dashboard():
                 How It Works
             </div>
         """, unsafe_allow_html=True)
-
         steps = [
             ("1", "#00D4AA", "Enter Amount",
              "Type the transaction value into the scanner field on the left."),
@@ -1393,10 +1253,7 @@ def render_user_dashboard():
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
         st.markdown("</div>", unsafe_allow_html=True)
-
-        # ── FIX: show the live threshold from session state, not the static THRESHOLD ──
         st.markdown(f"""
         <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);
                     border-radius:20px;padding:28px;margin-top:20px;">
@@ -1432,7 +1289,6 @@ def render_user_dashboard():
             </div>
         </div>
         """, unsafe_allow_html=True)
-
         st.markdown("""
         <div style="background:rgba(255,183,0,0.06);border:1px solid rgba(255,183,0,0.2);
                     border-radius:14px;padding:18px 20px;margin-top:20px;
@@ -1449,17 +1305,14 @@ def render_user_dashboard():
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-
 # ---------------------------------------------------------
-# 9. ADMIN DASHBOARD
+# 9. ADMIN DASHBOARD - Fixed Timestamp Display
 # ---------------------------------------------------------
 def render_admin_dashboard():
     st.markdown("""
     <div class="dash-greeting">🛡️ Fraud Control Center</div>
     <p class="dash-sub">Full system overview — admin access</p>
     """, unsafe_allow_html=True)
-
     # ---- metrics ----
     @st.cache_data(ttl=10)
     def get_all_users_cached():
@@ -1467,24 +1320,21 @@ def render_admin_dashboard():
             return list(auth.list_users().iterate_all())
         except Exception:
             return []
-
     all_fb_users = get_all_users_cached()
-    total_users  = len(all_fb_users)
-
+    total_users = len(all_fb_users)
     try:
-        snapshot      = db.collection("transactions").get()
+        snapshot = db.collection("transactions").get()
         total_checked = len(snapshot)
-        fraud_count   = sum(1 for d in snapshot if d.to_dict().get("fraud", False))
-        safe_count    = total_checked - fraud_count
+        fraud_count = sum(1 for d in snapshot if d.to_dict().get("fraud", False))
+        safe_count = total_checked - fraud_count
     except Exception:
         total_checked = fraud_count = safe_count = 0
-
     m1, m2, m3, m4 = st.columns(4)
     metrics = [
-        ("Fraud Caught",       fraud_count,   "#FF4D4D"),
-        ("Safe Transactions",  safe_count,    "#00D4AA"),
-        ("Total Checked",      total_checked, "#7DD3FC"),
-        ("Registered Users",   total_users,   "#FFB700"),
+        ("Fraud Caught", fraud_count, "#FF4D4D"),
+        ("Safe Transactions", safe_count, "#00D4AA"),
+        ("Total Checked", total_checked, "#7DD3FC"),
+        ("Registered Users", total_users, "#FFB700"),
     ]
     for col, (label, val, color) in zip([m1, m2, m3, m4], metrics):
         with col:
@@ -1494,7 +1344,6 @@ def render_admin_dashboard():
                 <div class="metric-lbl">{label}</div>
             </div>
             """, unsafe_allow_html=True)
-
     # ---- pie chart ----
     if total_checked > 0:
         fig = px.pie(
@@ -1515,7 +1364,6 @@ def render_admin_dashboard():
         _, pie_col, _ = st.columns([1, 2, 1])
         with pie_col:
             st.plotly_chart(fig, use_container_width=True)
-
     # ---- user management ----
     st.markdown("""
     <div style="margin-top:32px;">
@@ -1523,34 +1371,30 @@ def render_admin_dashboard():
         <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:20px;">Registered Users</h3>
     </div>
     """, unsafe_allow_html=True)
-
     try:
         blocked_docs = {d.id for d in db.collection("blocked_users").where("blocked", "==", True).stream()}
     except Exception:
         blocked_docs = set()
-
     try:
         user_meta = {d.id: d.to_dict() for d in db.collection("users").stream()}
     except Exception:
         user_meta = {}
-
     user_rows = []
     for u in sorted(all_fb_users, key=lambda x: x.user_metadata.creation_timestamp or 0, reverse=True):
         if u.email == ADMIN_EMAIL:
             continue
-        reg_ts   = u.user_metadata.creation_timestamp
+        reg_ts = u.user_metadata.creation_timestamp
         local_tz = pytz.timezone("Africa/Nairobi")
         reg_date = datetime.fromtimestamp(reg_ts / 1000, tz=local_tz).strftime("%Y-%m-%d %H:%M") if reg_ts else "—"
-        blocked  = u.uid in blocked_docs
-        name     = user_meta.get(u.uid, {}).get("name", "—")
+        blocked = u.uid in blocked_docs
+        name = user_meta.get(u.uid, {}).get("name", "—")
         user_rows.append({
-            "uid":      u.uid,
-            "name":     name,
-            "email":    u.email,
-            "reg":      reg_date,
-            "blocked":  blocked,
+            "uid": u.uid,
+            "name": name,
+            "email": u.email,
+            "reg": reg_date,
+            "blocked": blocked,
         })
-
     if not user_rows:
         st.info("No users registered yet.")
     else:
@@ -1558,7 +1402,6 @@ def render_admin_dashboard():
         for col, head in zip(header_cols, ["Name", "Email", "Registered", "Status", "Action"]):
             col.markdown(f"<span style='color:var(--text-muted);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;'>{head}</span>", unsafe_allow_html=True)
         st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.1);margin:4px 0 8px;'>", unsafe_allow_html=True)
-
         for row in user_rows:
             rc = st.columns([2, 2.5, 1.8, 1, 1.2])
             rc[0].markdown(f"<span style='font-size:0.9rem;'>{row['name']}</span>", unsafe_allow_html=True)
@@ -1578,7 +1421,6 @@ def render_admin_dashboard():
                     st.warning(f"🚫 {row['email']} has been blocked.")
                     st.cache_data.clear()
                     st.rerun()
-
     # ---- transaction history ----
     st.markdown("""
     <div style="margin-top:40px;">
@@ -1588,15 +1430,13 @@ def render_admin_dashboard():
     """, unsafe_allow_html=True)
     try:
         uid_to_name = {}
-
         for fb_u in all_fb_users:
             if fb_u.email:
                 uid_to_name[fb_u.uid] = fb_u.email
-
         try:
             for u in db.collection("users").stream():
-                d     = u.to_dict()
-                name  = (d.get("name") or "").strip()
+                d = u.to_dict()
+                name = (d.get("name") or "").strip()
                 email = (d.get("email") or "").strip()
                 if name and email:
                     uid_to_name[u.id] = f"{name} ({email})"
@@ -1606,7 +1446,6 @@ def render_admin_dashboard():
                     uid_to_name[u.id] = email
         except Exception:
             pass
-
         tx_docs = (
             db.collection("transactions")
             .order_by("timestamp", direction=firestore.Query.DESCENDING)
@@ -1614,33 +1453,31 @@ def render_admin_dashboard():
             .stream()
         )
         tx_data = []
+        local_tz = pytz.timezone("Africa/Nairobi")
         for doc in tx_docs:
-            d   = doc.to_dict()
-            ts  = d.get("timestamp")
+            d = doc.to_dict()
+            ts = d.get("timestamp") or d.get("local_time")
             uid = (d.get("uid") or "").strip()
-
             performed_by = (
                 (d.get("performed_by") or "").strip()
                 or uid_to_name.get(uid, "")
                 or (uid[:14] + "…" if len(uid) > 14 else uid or "—")
             )
-
-            local_tz = pytz.timezone("Africa/Nairobi")
             if ts:
-                if ts.tzinfo is None:
-                    ts = pytz.utc.localize(ts)
-                ts_local = ts.astimezone(local_tz)
+                if hasattr(ts, 'astimezone'):
+                    ts_local = ts.astimezone(local_tz)
+                else:
+                    ts_local = local_tz.localize(ts) if getattr(ts, 'tzinfo', None) is None else ts
                 ts_str = ts_local.strftime("%Y-%m-%d %H:%M")
             else:
                 ts_str = "—"
             tx_data.append({
-                "Timestamp":    ts_str,
+                "Timestamp": ts_str,
                 "Performed By": performed_by,
-                "Amount":       f"${float(d.get('amount', 0)):,.2f}",
-                "Status":       "🔴 Blocked" if d.get("fraud") else "🟢 Approved",
-                "Risk":         f"{int(float(d.get('error', 0)) * 100)}%",
+                "Amount": f"${float(d.get('amount', 0)):,.2f}",
+                "Status": "🔴 Blocked" if d.get("fraud") else "🟢 Approved",
+                "Risk": f"{int(float(d.get('error', 0)) * 100)}%",
             })
-
         if tx_data:
             df_tx = pd.DataFrame(tx_data)
             st.dataframe(
@@ -1648,39 +1485,31 @@ def render_admin_dashboard():
                 hide_index=True,
                 use_container_width=True,
                 column_config={
-                    "Timestamp":    st.column_config.TextColumn("Timestamp",    width="medium"),
+                    "Timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
                     "Performed By": st.column_config.TextColumn("Performed By", width="large"),
-                    "Amount":       st.column_config.TextColumn("Amount",       width="small"),
-                    "Status":       st.column_config.TextColumn("Status",       width="medium"),
-                    "Risk":         st.column_config.TextColumn("Risk",         width="small"),
+                    "Amount": st.column_config.TextColumn("Amount", width="small"),
+                    "Status": st.column_config.TextColumn("Status", width="medium"),
+                    "Risk": st.column_config.TextColumn("Risk", width="small"),
                 },
             )
         else:
             st.info("No transactions recorded yet.")
     except Exception as e:
         st.error(f"Firestore error: {e}")
-
     # ---- AI threshold ----
-    # ═══════════════════════════════════════════════════════════
-    # FIX: threshold is now read from and written to session_state
-    # so it survives reruns, and persisted to Firestore so it
-    # survives server restarts.
-    # ═══════════════════════════════════════════════════════════
     st.markdown("""
     <div style="margin-top:40px;">
         <div class="section-tag">Model Tuning</div>
         <h3 style="font-family:&quot;Playfair Display&quot;,serif;font-size:1.4rem;margin-bottom:16px;">AI Sensitivity</h3>
     </div>
     """, unsafe_allow_html=True)
-
     new_thr = st.slider(
         "Risk Threshold",
         min_value=0.5, max_value=1.5,
-        value=float(st.session_state.threshold),   # ← reads live value, not static THRESHOLD
+        value=float(st.session_state.threshold),
         step=0.05,
         key="admin_threshold",
     )
-
     st.markdown(f"""
     <div style="text-align:center;color:var(--text-muted);font-size:1.0rem;margin-top:8px;margin-bottom:16px;">
         Active threshold: <strong style="color:#FFB700;">{st.session_state.threshold:.2f}</strong>
@@ -1690,13 +1519,10 @@ def render_admin_dashboard():
         <span style="font-size:0.82rem;">(lower = more sensitive)</span>
     </div>
     """, unsafe_allow_html=True)
-
     col_apply, col_reset, _ = st.columns([1.2, 1.2, 3])
-
     with col_apply:
-        if st.button("✅  Apply Threshold", type="primary", key="apply_threshold", use_container_width=True):
+        if st.button("✅ Apply Threshold", type="primary", key="apply_threshold", use_container_width=True):
             st.session_state.threshold = new_thr
-            # Persist to Firestore so the value survives server restarts
             try:
                 db.collection("settings").document("model").set(
                     {"threshold": new_thr, "updated": firestore.SERVER_TIMESTAMP},
@@ -1705,9 +1531,8 @@ def render_admin_dashboard():
                 st.success(f"Threshold updated to **{new_thr:.2f}** and saved.")
             except Exception as e:
                 st.warning(f"Threshold updated in session but could not save to Firestore: {e}")
-
     with col_reset:
-        if st.button("↺  Reset to Default", key="reset_threshold", use_container_width=True):
+        if st.button("↺ Reset to Default", key="reset_threshold", use_container_width=True):
             default_thr = float(THRESHOLD)
             st.session_state.threshold = default_thr
             try:
@@ -1718,15 +1543,11 @@ def render_admin_dashboard():
                 st.success(f"Threshold reset to model default **{default_thr:.2f}**.")
             except Exception as e:
                 st.warning(f"Threshold reset in session but could not save to Firestore: {e}")
-
     st.markdown("<div class='site-footer' style='margin-top:60px;'>© 2025 SecureBank Admin Panel</div>", unsafe_allow_html=True)
-
-
 # ---------------------------------------------------------
 # 10. ROUTER
 # ---------------------------------------------------------
 page = st.session_state.page
-
 if page == "dashboard":
     if not st.session_state.logged_in:
         st.session_state.page = "login"
@@ -1737,26 +1558,18 @@ if page == "dashboard":
 elif page not in ("landing", "login", "register", "reset", "blocked", "dashboard"):
     st.session_state.page = "landing"
     st.rerun()
-
 page = st.session_state.page
-
 render_nav()
-
 if page == "landing":
     render_landing()
-
 elif page == "login":
     render_login()
-
 elif page == "register":
     render_register()
-
 elif page == "reset":
     render_reset()
-
 elif page == "blocked":
     render_blocked()
-
 elif page == "dashboard":
     if st.session_state.is_admin:
         render_admin_dashboard()
